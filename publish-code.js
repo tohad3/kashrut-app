@@ -31,3 +31,20 @@ if (fs.existsSync(path.join(HERE, 'kashrut.ico'))) copyFile(path.join(HERE, 'kas
 copyDir(path.join(HERE, 'public'), path.join(dst, 'public'));
 fs.writeFileSync(path.join(dst, 'version.txt'), new Date().toISOString() + '\n');
 console.log('✓ הקוד פורסם לתיקייה המשותפת: ' + dst);
+
+// גיבוי ל-GitHub: שומר גרסה ודוחף. כישלון כאן לא עוצר את הפרסום לתיקייה המשותפת.
+function gitBackup() {
+  const { execFileSync } = require('child_process');
+  const local = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'MinGit', 'cmd', 'git.exe');
+  const git = fs.existsSync(local) ? local : 'git';
+  const run = (...args) => execFileSync(git, args, { cwd: HERE, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  try { run('rev-parse', '--git-dir'); } catch { console.log('· אין גיבוי git בתיקייה הזו, מדלג'); return; }
+  try {
+    run('add', '-A');
+    if (run('status', '--porcelain')) run('commit', '-q', '-m', 'פרסום ' + new Date().toLocaleString('he-IL'));
+    if (!run('remote')) { console.log('✓ נשמרה גרסה בגיבוי המקומי (עדיין לא מחובר ל-GitHub)'); return; }
+    run('push', '-q', 'origin', 'HEAD');
+    console.log('✓ הגיבוי ב-GitHub עודכן');
+  } catch (e) { console.error('⚠ הגיבוי ל-GitHub נכשל (הפרסום עצמו הצליח): ' + String(e.stderr || e.message).trim()); }
+}
+gitBackup();
