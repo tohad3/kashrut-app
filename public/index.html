@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b3a5b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="כשרות">
+  <title>ניהול כשרות</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- כניסה -->
+<section id="login" class="login hidden">
+  <form id="loginForm" class="login-card" autocomplete="on">
+    <img src="icon.svg" alt="" class="login-logo">
+    <h1>ניהול כשרות</h1>
+    <p class="muted">כניסה עם שם המשתמש והסיסמה של מערכת "שירת הים"</p>
+    <label>שם משתמש<input name="username" autocomplete="username" required></label>
+    <label>סיסמה
+      <span class="pw-wrap">
+        <input name="password" id="password" type="password" autocomplete="current-password" required>
+        <button type="button" class="pw-eye" id="pwToggle" aria-label="הצג סיסמה" aria-pressed="false" title="הצג סיסמה">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path id="eyeIcon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
+        </button>
+      </span>
+    </label>
+    <p id="capsWarn" class="caps-warn hidden" role="status">⇪ מקש Caps Lock דלוק</p>
+    <label id="authorityRow" class="hidden">ארגון<select name="authorityId"></select></label>
+    <button class="btn primary" type="submit">כניסה</button>
+    <p id="loginError" class="error hidden" role="alert"></p>
+    <p class="fine">הסיסמה נשלחת רק לאתר "שירת הים" ואינה נשמרת.</p>
+  </form>
+</section>
+
+<!-- אפליקציה -->
+<div id="app" class="hidden">
+  <header class="topbar">
+    <button id="backBtn" class="btn ghost back-btn" disabled aria-label="חזרה">→ חזרה</button>
+    <div class="brand"><img src="icon.svg" alt=""><div><strong id="userName"></strong><span id="authorityName" class="muted"></span></div></div>
+    <div class="top-actions">
+      <button id="refreshBtn" class="icon-btn" title="רענון נתונים" aria-label="רענון">⟳</button>
+      <button id="logoutBtn" class="btn ghost">יציאה</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-view="dashboard" class="active"><span>📊</span>דשבורד</button>
+    <button data-view="map"><span>🗺️</span>מפת עסקים</button>
+    <button data-view="attendance"><span>🕒</span>נוכחות</button>
+    <button data-view="sites"><span>🏪</span>בתי עסק</button>
+    <button data-view="supervisors"><span>👤</span>משגיחים</button>
+    <button data-view="inspectors"><span>🧑‍💼</span>מפקחים</button>
+    <button data-view="admin" class="needs-admin"><span>⚙️</span>משתמשים</button>
+  </nav>
+
+  <main>
+    <!-- דשבורד -->
+    <section id="view-dashboard" class="view">
+      <div class="toolbar">
+        <label>דיווחים מתאריך<input id="dashFrom" type="date"></label>
+        <label>עד<input id="dashTo" type="date"></label>
+        <label>תפקיד<select id="dashRole" multiple><option value="">כל התפקידים</option></select></label>
+        <button id="dashLoad" class="btn primary">הצג</button>
+      </div>
+      <div class="chips" id="dashQuick">
+        <button data-days="1">היום</button><button data-days="7">7 ימים</button><button data-days="14">14 ימים</button>
+        <button data-days="30">30 ימים</button><button data-month="0">החודש</button><button data-month="1">חודש קודם</button>
+      </div>
+      <div class="chips" id="dashStatuses"></div>
+      <div class="kpis" id="kpis"></div>
+      <div class="grid">
+        <div class="card"><h3>בתי עסק לפי סטטוס</h3><div class="chart"><canvas id="chStatus"></canvas></div></div>
+        <div class="card"><h3>דיווחים <span class="range-label"></span></h3><div class="chart"><canvas id="chDaily"></canvas></div></div>
+        <div class="card"><h3>עסקים לפי סוג</h3><div class="chart"><canvas id="chType"></canvas></div></div>
+        <div class="card"><h3>עסקים לפי אזור</h3><div class="chart"><canvas id="chArea"></canvas></div></div>
+        <div class="card"><h3>רמת כשרות</h3><div class="chart"><canvas id="chLevel"></canvas></div></div>
+        <div class="card wide" id="segCard">
+          <h3>פילוח עסקים לפי "לוח משגיחים" <span class="range-label fixed" id="segMeta"></span></h3>
+          <div class="toolbar">
+            <label>אשכול<select id="segCluster" multiple><option value="">כל האשכולות</option></select></label>
+            <label>מפקח<select id="segInsp" multiple><option value="">כל המפקחים</option></select></label>
+            <label>חוות דעת<select id="segOpinion" multiple><option value="">הכול</option></select></label>
+          </div>
+          <div class="kpis small" id="segKpis"></div>
+          <details id="segUnmatched"></details>
+        </div>
+        <div class="card"><h3>עסקים לפי אשכול</h3><div class="chart"><canvas id="chSegCluster"></canvas></div></div>
+        <div class="card"><h3>עסקים לפי מפקח</h3><div class="chart"><canvas id="chSegInsp"></canvas></div></div>
+        <div class="card"><h3>חוות דעת</h3><div class="chart"><canvas id="chSegOpinion"></canvas></div></div>
+        <div class="card"><h3>דרגה</h3><div class="chart"><canvas id="chSegGrade"></canvas></div></div>
+        <div class="card"><h3>כימות שעות</h3><div class="chart"><canvas id="chSegQuota"></canvas></div></div>
+        <div class="card wide"><h3>עסקים לפי סיווג</h3><div class="chart tall"><canvas id="chSegCat"></canvas></div></div>
+        <div class="card wide"><h3><span id="supTableTitle">משגיחים ומפקחים</span> <span class="range-label"></span></h3><div class="table-wrap"><table id="supTable"></table></div></div>
+        <div class="card wide"><h3>משגיחים משויכים שלא דיווחו <span class="range-label"></span></h3>
+          <div class="toolbar">
+            <div class="msel" id="msInsp" data-label="מפקח"></div>
+            <div class="msel" id="msLast" data-label="דיווח בחצי השנה"></div>
+            <div class="msel" id="msPhone" data-label="טלפון כשר"></div>
+            <div class="msel" id="msDecl" data-label="הצהרה"></div>
+            <div class="msel" id="msCert" data-label="תעודה"></div>
+            <div class="msel" id="msWa" data-label="WhatsApp"></div>
+            <button class="btn ghost" id="msClear" type="button">ניקוי סינון</button>
+          </div>
+          <p class="muted" id="silentSummary"></p>
+          <div class="table-wrap"><table id="silentTable"></table></div>
+        </div>
+        <div class="card wide">
+          <h3>משגיחים לפי מפקח</h3>
+          <div class="toolbar">
+            <label>מפקח<select id="inspSel"></select></label>
+            <label>עסקים<select id="inspScope"><option value="active" selected>פעילים בלבד</option><option value="">כל הסטטוסים</option></select></label>
+          </div>
+          <p class="muted" id="inspSummary"></p>
+          <div class="table-wrap"><table id="inspTable"></table></div>
+        </div>
+        <div class="card wide"><h3>תמונת מצב מהמערכת <span class="range-label fixed">· כלל המועצה</span></h3><div id="homeSummary" class="summary"></div></div>
+      </div>
+    </section>
+
+    <!-- מפת עסקים -->
+    <section id="view-map" class="view hidden">
+      <div class="toolbar">
+        <input id="mapSearch" type="search" placeholder="חיפוש שם עסק…">
+        <select id="mapStatus" multiple><option value="active" selected>פעילים בלבד</option><option value="">כל הסטטוסים</option></select>
+        <select id="mapType" multiple><option value="">כל הסוגים</option></select>
+        <select id="mapLevel" multiple><option value="">כל רמות הכשרות</option></select>
+        <select id="mapCluster" multiple><option value="">כל האשכולות</option></select>
+        <select id="mapInspector" multiple><option value="">כל המפקחים</option></select>
+        <select class="map-style" aria-label="סגנון מפה"><option value="osm">סגנון מפה: רגילה (OSM)</option><option value="wiki">סגנון מפה: עברית (Wikimedia)</option><option value="esri">סגנון מפה: Esri</option></select>
+      </div>
+      <div id="coordBanner" class="banner hidden"></div>
+      <div id="bizMap" class="map"></div>
+      <div class="legend" id="mapLegend"></div>
+    </section>
+
+    <!-- נוכחות -->
+    <section id="view-attendance" class="view hidden">
+      <div class="toolbar">
+        <label>מתאריך<input id="attFrom" type="date"></label>
+        <label>עד<input id="attTo" type="date"></label>
+        <button id="attLoad" class="btn primary">הצג</button>
+      </div>
+      <div class="toolbar">
+        <label>תפקיד<select id="attRole" multiple><option value="">כל התפקידים</option></select></label>
+        <label>מפקח<select id="attInspector" multiple><option value="">כל המפקחים</option></select></label>
+        <label>משגיח / מפקח<select id="attSupervisor" multiple><option value="">כולם</option></select></label>
+        <label id="attDayRow" class="hidden">יום<select id="attDay"></select></label>
+        <select class="map-style" aria-label="סגנון מפה"><option value="osm">סגנון מפה: רגילה (OSM)</option><option value="wiki">סגנון מפה: עברית (Wikimedia)</option><option value="esri">סגנון מפה: Esri</option></select>
+      </div>
+      <div class="chips" id="attMode">
+        <button data-mode="sites" class="active">🏪 דיווחים לפי עסק</button>
+        <button data-mode="staff">👤 מיקום אחרון של הצוות</button>
+        <button data-mode="route">🧭 מסלול יומי</button>
+      </div>
+      <div class="chips" id="attStatus" aria-label="סינון לפי מצב הדיווח">
+        <span class="chips-label">הצג רק:</span>
+        <button data-range="ok"><i class="dot ok"></i> כניסה ויציאה בטווח (<b>0</b>)</button>
+        <button data-range="partial"><i class="dot partial"></i> חלקי (<b>0</b>)</button>
+        <button data-range="bad"><i class="dot bad"></i> מחוץ לטווח / לא אומת (<b>0</b>)</button>
+      </div>
+      <div class="kpis small" id="attKpis"></div>
+      <div id="attMap" class="map"></div>
+      <div class="legend" id="attLegend"></div>
+      <div class="card"><h3>דיווחים</h3><div class="table-wrap"><table id="attTable"></table></div></div>
+    </section>
+
+    <!-- בתי עסק -->
+    <section id="view-sites" class="view hidden">
+      <div class="card" id="reqCard" style="margin-bottom:16px">
+        <h3>בקשות חדשות לתעודת כשרות וזמן טיפול</h3>
+        <p class="muted" id="reqNote">טוען…</p>
+        <div class="kpis small" id="reqKpis" style="margin-bottom:0"></div>
+      </div>
+      <div class="toolbar">
+        <input id="siteSearch" type="search" placeholder="חיפוש לפי שם, מספר, רחוב, משגיח…">
+        <select id="siteStatus" multiple><option value="">כל הסטטוסים</option></select>
+        <select id="siteType" multiple><option value="">כל הסוגים</option></select>
+        <select id="sitePaid" multiple><option value="">אגרה – הכול</option><option value="no">לא שולם</option><option value="yes">שולם</option></select>
+        <select id="siteCluster" multiple><option value="">כל האשכולות</option><option value="__none">לא נמצא בלוח משגיחים</option></select>
+      </div>
+      <p class="muted" id="siteCount"></p>
+      <div id="siteList" class="site-list"></div>
+    </section>
+    <!-- משגיחים -->
+    <section id="view-supervisors" class="view hidden">
+      <div class="toolbar">
+        <input id="supSearch" type="search" placeholder="חיפוש לפי שם משגיח או עסק…">
+        <select id="supInsp" multiple><option value="">כל המפקחים</option></select>
+        <select id="supPhone" multiple>
+          <option value="">טלפון / הצהרה – הכול</option>
+          <option value="kosher">טלפון כשר</option>
+          <option value="nonkosher">טלפון לא כשר</option>
+          <option value="unknown">טלפון לא ידוע</option>
+          <option value="nodecl">בלי הצהרה</option>
+          <option value="wa">סומן "יש WhatsApp"</option>
+        </select>
+        <select id="supRep" multiple>
+          <option value="">דיווח – הכול</option>
+          <option value="yes">דיווחו בתקופה</option>
+          <option value="no">לא דיווחו בתקופה</option>
+          <option value="never">לא דיווחו בכלל (חצי שנה)</option>
+          <option value="unassigned">לא משויכים לעסק</option>
+        </select>
+        <select id="supStatus" multiple>
+          <option value="">סטטוס באתר – הכול</option>
+          <option value="active" selected>פעילים באתר</option>
+          <option value="inactive">לא פעילים באתר</option>
+          <option value="none">לא רשומים באתר</option>
+        </select>
+        <select id="supScope"><option value="active">עסקים פעילים בלבד</option><option value="">עסקים בכל הסטטוסים</option></select>
+      </div>
+      <p class="muted" id="supCount"></p>
+      <div class="card"><div class="table-wrap tall"><table id="supTabTable"></table></div></div>
+    </section>
+
+    <!-- מפקחים -->
+    <section id="view-inspectors" class="view hidden">
+      <div class="toolbar">
+        <select id="inspScope2"><option value="active">עסקים פעילים בלבד</option><option value="">עסקים בכל הסטטוסים</option></select>
+      </div>
+      <p class="muted" id="inspCount"></p>
+      <div class="card"><div class="table-wrap tall"><table id="inspTabTable"></table></div></div>
+    </section>
+
+    <!-- ניהול משתמשים (מנהל בלבד) -->
+    <section id="view-admin" class="view hidden">
+      <div class="card">
+        <h3>ניהול משתמשים והרשאות</h3>
+        <p class="muted">כל מי שנכנס לאפליקציה מופיע כאן. תפקידים: <b>מנהל</b> (הכול + ניהול משתמשים), <b>עורך</b> (עריכת נתוני ניהול), <b>צופה</b> (צפייה בלבד). משתמש חדש מתחיל כצופה.</p>
+        <div class="table-wrap"><table id="adminTable"></table></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- כרטיס בית עסק -->
+<div id="sheet" class="sheet hidden" role="dialog" aria-modal="true">
+  <div class="sheet-body">
+    <div class="sheet-tools">
+      <button class="icon-btn" id="sheetClose" aria-label="סגירה" title="סגירה">✕</button>
+      <button class="icon-btn" id="sheetFull" aria-label="מסך מלא" aria-pressed="false" title="מסך מלא">⛶</button>
+      <input type="search" id="sheetSearch" class="hidden" placeholder="חיפוש ברשימה…" aria-label="חיפוש ברשימה">
+      <span class="muted" id="sheetSearchCount"></span>
+    </div>
+    <div id="sheetContent"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden" role="status"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# נתונים ומפתחות — לא עולים ל-GitHub
+data/
+data-shared/
+*.key
+*-key.txt
+.env
+.env.*
+
+# מנוע Node נייד, חבילות וקבצי התקנה
+node/
+node_modules/
+*.zip
+
+# מסמכים פנימיים
+בקשה-*.md
+
+# קבצים זמניים
+*.tmp
+*.log
+Thumbs.db
+desktop.ini

@@ -1,0 +1,13 @@
+{
+  "name": "kashrut-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "דשבורד, מפות ועדכון נתונים עבור מערכת שירת הים - כשרות",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.14"
+  }
+}

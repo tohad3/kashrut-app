@@ -1,0 +1,33 @@
+// publish-code.js — מפרסם את קוד האפליקציה המקומי אל "<תיקייה משותפת>\_app" ב-OneDrive,
+// כדי שיתעדכן אוטומטית אצל כל המשתמשים בהפעלה הבאה. להריץ: node publish-code.js
+const fs = require('fs');
+const path = require('path');
+const HERE = __dirname;
+
+function resolveSharedDir() {
+  if (process.env.KASHRUT_SHARED_DIR) { try { if (fs.existsSync(process.env.KASHRUT_SHARED_DIR)) return process.env.KASHRUT_SHARED_DIR; } catch {} }
+  const home = process.env.USERPROFILE || process.env.HOME || require('os').homedir();
+  const TARGET = 'אפליקציית כשרות - נתונים';
+  try {
+    for (const d of fs.readdirSync(home)) {
+      if (!/^OneDrive/i.test(d)) continue;
+      const base = path.join(home, d);
+      try { const exact = path.join(base, TARGET); if (fs.existsSync(exact)) return exact; } catch {}
+      try { for (const sub of fs.readdirSync(base)) { if (sub === TARGET || sub.endsWith(TARGET)) { const c = path.join(base, sub); try { if (fs.statSync(c).isDirectory()) return c; } catch {} } } } catch {}
+    }
+  } catch {}
+  return null;
+}
+
+function copyFile(src, dst) { fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.copyFileSync(src, dst + '.tmp'); fs.renameSync(dst + '.tmp', dst); }
+function copyDir(src, dst) { for (const e of fs.readdirSync(src, { withFileTypes: true })) { const s = path.join(src, e.name), d = path.join(dst, e.name); if (e.isDirectory()) copyDir(s, d); else copyFile(s, d); } }
+
+const shared = resolveSharedDir();
+if (!shared) { console.error('✗ לא נמצאה התיקייה המשותפת ב-OneDrive'); process.exit(1); }
+const dst = path.join(shared, '_app');
+copyFile(path.join(HERE, 'server.js'), path.join(dst, 'server.js'));
+copyFile(path.join(HERE, 'bootstrap.js'), path.join(dst, 'bootstrap.js'));
+if (fs.existsSync(path.join(HERE, 'kashrut.ico'))) copyFile(path.join(HERE, 'kashrut.ico'), path.join(dst, 'kashrut.ico'));
+copyDir(path.join(HERE, 'public'), path.join(dst, 'public'));
+fs.writeFileSync(path.join(dst, 'version.txt'), new Date().toISOString() + '\n');
+console.log('✓ הקוד פורסם לתיקייה המשותפת: ' + dst);

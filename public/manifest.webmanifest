@@ -1,0 +1,13 @@
+{
+  "name": "ניהול כשרות",
+  "short_name": "כשרות",
+  "lang": "he",
+  "dir": "rtl",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b3a5b",
+  "theme_color": "#0b3a5b",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
