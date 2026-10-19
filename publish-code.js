@@ -29,6 +29,15 @@ copyFile(path.join(HERE, 'server.js'), path.join(dst, 'server.js'));
 copyFile(path.join(HERE, 'bootstrap.js'), path.join(dst, 'bootstrap.js'));
 if (fs.existsSync(path.join(HERE, 'kashrut.ico'))) copyFile(path.join(HERE, 'kashrut.ico'), path.join(dst, 'kashrut.ico'));
 copyDir(path.join(HERE, 'public'), path.join(dst, 'public'));
+// קובץ ההתקנה לעמיתים חדשים, בראש התיקייה המשותפת (רק כשהוא השתנה)
+const setup = path.join(HERE, 'installer', 'release', 'kashrut-setup.exe');
+const setupDst = path.join(shared, 'התקנת ניהול כשרות.exe');
+try {
+  if (fs.existsSync(setup) && (!fs.existsSync(setupDst) || fs.statSync(setupDst).size !== fs.statSync(setup).size || fs.statSync(setupDst).mtimeMs < fs.statSync(setup).mtimeMs)) {
+    copyFile(setup, setupDst);
+    console.log('✓ קובץ ההתקנה עודכן בתיקייה המשותפת');
+  }
+} catch (e) { console.warn('⚠ העתקת קובץ ההתקנה נכשלה: ' + e.message); }
 fs.writeFileSync(path.join(dst, 'version.txt'), new Date().toISOString() + '\n');
 console.log('✓ הקוד פורסם לתיקייה המשותפת: ' + dst);
 
