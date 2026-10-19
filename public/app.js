@@ -1256,10 +1256,20 @@ function drawRoute(layer, list) {
   if (line.length > 1) {
     L.polyline(line, { color: '#0b3a5b', weight: 4, opacity: 0.75, dashArray: '8 6' }).addTo(layer);
   }
-  stops.forEach((x, i) => {
-    const color = RANGE_COLORS[inRangeClass(x)];
-    L.marker(coordOf(x), { zIndexOffset: i, icon: L.divIcon({ className: 'route-pin', html: `<span style="background:${color}">${list.indexOf(x) + 1}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }) })
-      .bindPopup(`<h4>${list.indexOf(x) + 1}. ${esc(x.siteName)}</h4><div>${esc(x.from)}–${esc(x.to)}</div><div>כניסה: ${esc(x.statusIn || '—')}</div><div>יציאה: ${esc(x.statusOut || '—')}</div>${x.siteId ? `<p><button class="btn ghost" onclick="openSite(${Number(x.siteId)})">כרטיס עסק</button></p>` : ''}`)
+  // עצירות באותו מקום (ביקור חוזר באותו עסק, או עסקים באותה כתובת) מתאחדות לסיכה אחת עם כל המספרים,
+  // אחרת הסיכה האחרונה מסתירה לגמרי את המספרים שמתחתיה
+  const groups = [];
+  stops.forEach((x) => {
+    const c = coordOf(x);
+    const g = groups.find((g) => L.latLng(g.c).distanceTo(c) < 15);
+    if (g) g.items.push(x); else groups.push({ c, items: [x] });
+  });
+  groups.forEach((g, i) => {
+    const nums = g.items.map((x) => list.indexOf(x) + 1);
+    const html = g.items.map((x, j) => `<span style="background:${RANGE_COLORS[inRangeClass(x)]}">${nums[j]}</span>`).join('');
+    const w = 26 * g.items.length;
+    L.marker(g.c, { zIndexOffset: i, icon: L.divIcon({ className: 'route-pin', html, iconSize: [w, 26], iconAnchor: [w / 2, 13] }) })
+      .bindPopup(g.items.map((x, j) => `<h4>${nums[j]}. ${esc(x.siteName)}</h4><div>${esc(x.from)}–${esc(x.to)}</div><div>כניסה: ${esc(x.statusIn || '—')}</div><div>יציאה: ${esc(x.statusOut || '—')}</div>${x.siteId ? `<p><button class="btn ghost" onclick="openSite(${Number(x.siteId)})">כרטיס עסק</button></p>` : ''}`).join('<hr>'))
       .addTo(layer);
   });
   const first = list[0], lastR = list[list.length - 1];

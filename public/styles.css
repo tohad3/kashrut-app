@@ -190,7 +190,7 @@ tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--bg); }
 .staff-pin { background: none; border: 0; }
 .staff-pin span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: #fff; font-weight: 700;
   font-size: 13px; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
-.route-pin { background: none; border: 0; }
+.route-pin { background: none; border: 0; display: flex; direction: ltr; }
 .route-pin span { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; color: #fff; font-weight: 700;
   font-size: 13px; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
 .leaflet-tooltip.staff-label { font-family: inherit; font-weight: 600; direction: rtl; }
