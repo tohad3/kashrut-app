@@ -30,7 +30,7 @@ $out = & $node publish-code.js 2>&1
 $head = & $git log -1 --format='%h %s'
 Log ("published " + $head + " | " + ($out -join ' / '))
 # a receipt on GitHub, so whoever pushed the change can see it reached the shared folder
-Set-Content -Path (Join-Path $app 'last-auto-publish.txt') -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $head)
+Set-Content -Path (Join-Path $app 'last-auto-publish.txt') -Encoding UTF8 -Value (@((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $head) + @($out))
 & $git add last-auto-publish.txt 2>&1 | Out-Null
 & $git commit -q -m 'auto-publish receipt' 2>&1 | Out-Null
 $out = & $git push -q origin HEAD:main 2>&1

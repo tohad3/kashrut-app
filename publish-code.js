@@ -37,6 +37,8 @@ try {
     copyFile(process.execPath, nodeDst);
     console.log('✓ Node הועתק לתיקייה המשותפת (להתקנה אצל עמיתים)');
   }
+  const ps1 = path.join(shared, 'התקנת ניהול כשרות.ps1');
+  console.log('· בתיקייה המשותפת: סקריפט התקנה ' + (fs.existsSync(ps1) ? 'קיים' : 'חסר') + ', Node ' + (fs.existsSync(nodeDst) ? Math.round(fs.statSync(nodeDst).size / 1e6) + 'MB' : 'חסר'));
   // קובץ ה-exe הקודם נחסם ב-SmartScreen, ולכן הוסר לטובת הסקריפט
   const oldExe = path.join(shared, 'התקנת ניהול כשרות.exe');
   if (fs.existsSync(oldExe)) fs.unlinkSync(oldExe);
