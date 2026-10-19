@@ -842,12 +842,29 @@ function sitePopup(x) {
     <div>${esc([x.street, x.addressNote].filter(Boolean).join(' · '))}</div>
     <div>${esc([x.kosherType, x.kosherLevel].filter(Boolean).join(' · '))}</div>
     ${bizLine(x.id)}
+    ${x.inspectors ? `<div>מפקח: ${plinks(x.inspectors)}</div>` : ''}
     ${x.supervisors ? `<div>משגיחים: ${plinks(x.supervisors)}</div>` : ''}
     <p><button class="btn primary" onclick="openSite(${Number(x.id)})">פרטים ועריכה</button></p>`;
 }
 
-const mapFiltersEls = ['#mapSearch', '#mapStatus', '#mapType', '#mapLevel', '#mapCluster', '#mapInspector'];
+const mapFiltersEls = ['#mapSearch', '#mapStatus', '#mapType', '#mapLevel', '#mapCluster', '#mapInspector', '#mapColorBy'];
 mapFiltersEls.forEach((s) => $(s).addEventListener('input', renderBizMap));
+
+// צבע קבוע לכל מפקח (לפי הסדר האלפביתי של כל המפקחים), כדי שהצבע לא ישתנה כשמסננים
+const INSPECTOR_COLORS = ['#d64545', '#1f77d0', '#1f9d55', '#e0a106', '#7b61c9', '#f07b3f', '#12a3b4', '#c95b8b', '#6a8f2f', '#0b3a5b', '#a0522d', '#e377c2'];
+const NO_INSP_COLOR = '#8795a1';
+function inspectorColor(name) {
+  if (!name) return NO_INSP_COLOR;
+  const all = [...new Set(state.sites.flatMap((x) => splitNames(x.inspectors)))].sort((a, b) => a.localeCompare(b, 'he'));
+  const i = all.indexOf(name);
+  if (i < 0) return NO_INSP_COLOR;
+  // אחרי שנגמרת הרשימה הקבועה – גוונים נוספים מפוזרים על גלגל הצבעים
+  return i < INSPECTOR_COLORS.length ? INSPECTOR_COLORS[i] : `hsl(${Math.round((i * 137.5) % 360)}, 65%, 42%)`;
+}
+// המפקח שקובע את הצבע: הראשון מבין המסוננים אם יש סינון, אחרת הראשון של העסק
+const siteInspector = (x, insp) => { const names = splitNames(x.inspectors); return (insp.length && names.find((n) => insp.includes(n))) || names[0] || ''; };
+try { const v = localStorage.getItem('mapColorBy'); if (v) $('#mapColorBy').value = v; } catch {}
+$('#mapColorBy').addEventListener('change', () => { try { localStorage.setItem('mapColorBy', $('#mapColorBy').value); } catch {} });
 
 function renderBizMap() {
   if ($('#view-map').classList.contains('hidden') && !state.maps.bizMap) return;
@@ -859,14 +876,25 @@ function renderBizMap() {
     anyOf(ty, x.type) && (!lv.length || lv.some((l) => (x.kosherLevel || '').includes(l))) && (!cl.length || cl.includes(bizOf(x.id)?.cluster)) &&
     (!insp.length || splitNames(x.inspectors).some((n) => insp.includes(n))) &&
     (!q || x.name.includes(q)));
+  const byInsp = $('#mapColorBy').value !== 'status';
   const layer = L.layerGroup();
   for (const x of list) {
-    L.circleMarker(x.coord, { radius: 7, color: '#fff', weight: 1.5, fillColor: STATUS_COLORS[x.statusId] || '#999', fillOpacity: 0.9 })
+    const fill = byInsp ? inspectorColor(siteInspector(x, insp)) : STATUS_COLORS[x.statusId] || '#999';
+    L.circleMarker(x.coord, { radius: 7, color: '#fff', weight: 1.5, fillColor: fill, fillOpacity: 0.9 })
       .bindPopup(sitePopup(x)).addTo(layer);
   }
   layer.addTo(m);
   state.layers.biz = layer;
   if (list.length && (q || !renderBizMap.fitted)) { m.fitBounds(L.latLngBounds(list.map((x) => x.coord)).pad(0.1)); renderBizMap.fitted = true; }
+  if (byInsp) {
+    const n = new Map();
+    for (const x of list) { const k = siteInspector(x, insp); n.set(k, (n.get(k) || 0) + 1); }
+    const names = [...n.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b, 'he'));
+    if (n.has('')) names.push('');
+    $('#mapLegend').innerHTML = `<span><b>${list.length}</b>&nbsp;על המפה</span>` + names.map((k) =>
+      `<span><i class="dot" style="background:${inspectorColor(k)}"></i>${esc(k || NO_INSP)} (${n.get(k)})</span>`).join('');
+    return;
+  }
   const counts = countBy(list, 'status');
   $('#mapLegend').innerHTML = `<span><b>${list.length}</b>&nbsp;על המפה</span>` + counts.map(([k, n]) => {
     const id = state.sites.find((x) => x.status === k)?.statusId;
@@ -1118,6 +1146,7 @@ function openReport(r) {
     <dl class="info">
       <dt>שם</dt><dd><b>${plink(r.supervisor)}</b></dd>
       <dt>תפקיד</dt><dd>${esc(r.group || '—')}</dd>
+      <dt>מפקח</dt><dd>${repInspectors(r).length ? plinks(repInspectors(r)) : '—'}</dd>
       <dt>בית עסק</dt><dd><b>${esc(r.siteName)}</b></dd>
       ${site ? `<dt>כתובת</dt><dd>${esc([site.street, site.addressNote, site.neighborhood].filter(Boolean).join(' · ') || '—')}</dd>
       <dt>סוג עסק</dt><dd>${esc(site.type || '—')}</dd>
@@ -1161,7 +1190,9 @@ function drawBySite(layer, list) {
     // מהחלון אפשר לפתוח דיווח בודד, את רשימת כל הדיווחים של העסק, ואת כרטיס העסק
     const sid = Number(reps[0].siteId);
     reps.sort((a, b) => (b.date - a.date) || String(b.from).localeCompare(a.from));
-    const html = `<h4><button class="plain-link" onclick="openSite(${sid})">${esc(reps[0].siteName)}</button></h4>` + reps.slice(0, 12).map((x, i) =>
+    const insps = repInspectors(reps[0]);
+    const html = `<h4><button class="plain-link" onclick="openSite(${sid})">${esc(reps[0].siteName)}</button></h4>` +
+      (insps.length ? `<div class="muted">מפקח: ${plinks(insps)}</div>` : '') + reps.slice(0, 12).map((x, i) =>
       `<div><button class="plain-link rep-line" onclick="openMapReport(${sid}, ${i})"><i class="dot ${inRangeClass(x)}"></i> ${fmtDate(x.date)} ${esc(x.from)}–${esc(x.to)}</button> · ${plink(x.supervisor)}</div>`).join('') +
       (reps.length > 12 ? `<div class="muted">ועוד ${reps.length - 12}…</div>` : '') +
       `<p class="popup-actions"><button class="btn primary" onclick="openMapReports(${sid})">רשימת הדיווחים (${reps.length})</button> <button class="btn ghost" onclick="openSite(${sid})">כרטיס העסק</button></p>`;
@@ -1175,6 +1206,14 @@ function drawBySite(layer, list) {
 // נקראים מחלון העסק במפת הנוכחות
 window.openMapReports = (siteId) => { const reps = state.attBySite && state.attBySite.get(siteId); if (reps) openDrill('דיווחים · ' + reps[0].siteName, 'reports', reps); };
 window.openMapReport = (siteId, i) => { const reps = state.attBySite && state.attBySite.get(siteId); if (reps && reps[i]) openReport(reps[i]); };
+
+// המפקחים של משגיח: המפקחים של העסקים שהוא משובץ בהם, ואם אין – של העסק שעליו דיווח
+function staffInspectors(r) {
+  const names = new Set(state.sites.filter((x) => splitNames(x.supervisors).includes(r.supervisor)).flatMap((x) => splitNames(x.inspectors)));
+  if (!names.size) repInspectors(r).forEach((n) => names.add(n));
+  names.delete(r.supervisor);
+  return [...names].sort((a, b) => a.localeCompare(b, 'he'));
+}
 
 // המיקום האחרון הידוע של כל משגיח/מפקח לפי הדיווח האחרון שלו בתקופה
 function drawStaff(layer, list) {
@@ -1194,9 +1233,11 @@ function drawStaff(layer, list) {
     const pos = i ? [c[0] + 0.00012 * Math.cos(i * 2.1), c[1] + 0.00016 * Math.sin(i * 2.1)] : c;
     pts.push(pos);
     const color = roleColor(r.group);
+    const insps = staffInspectors(r);
     L.marker(pos, { icon: L.divIcon({ className: 'staff-pin', html: `<span style="background:${color}">${esc(initials(r.supervisor))}</span>`, iconSize: [34, 34], iconAnchor: [17, 17] }) })
-      .bindTooltip(esc(r.supervisor), { direction: 'top', offset: [0, -16], className: 'staff-label' })
+      .bindTooltip(esc(r.supervisor) + (insps.length ? `<div class="staff-insp">מפקח: ${esc(insps.join(', '))}</div>` : ''), { direction: 'top', offset: [0, -16], className: 'staff-label' })
       .bindPopup(`<h4>${esc(r.supervisor)}</h4><div class="muted">${esc(r.group)}</div>
+        ${insps.length ? `<div>מפקח: ${plinks(insps)}</div>` : ''}
         <div>דיווח אחרון: <b>${esc(r.siteName)}</b></div>
         <div>${fmtDate(r.date)} ${esc(r.from)}–${esc(r.to)}</div>
         <div>${n} דיווחים בתקופה</div>
