@@ -88,3 +88,4 @@ https://shirathayam.m-datit.org.il ומקבלים:
 | תמונת מצב | `GET Data/General/GetHomePageDetails` |
 
 אחרי כל פרסום אוטומטי נכתבת קבלה בקובץ `last-auto-publish.txt` ב-GitHub.
+- `last-auto-publish.txt` כולל גם את פלט הפרסום (למשל אם Node וסקריפט ההתקנה נמצאים בתיקייה המשותפת).
