@@ -38,6 +38,29 @@ BrandingText "${APPNAME}"
   Pop $0
 !macroend
 
+; בודק שהתיקייה המשותפת "אפליקציית כשרות - נתונים" מסונכרנת ב-OneDrive, ואם לא, פותח את הקישור שלה
+; כדי שהמשתמש יוסיף אותה ("הוסף קיצור דרך לקבצים שלי"). את התיקייה עצמה רק הבעלים יכול לשתף.
+; CHECK_B64 ו-SHARE_URL מגיעים מ-build.sh.
+Function CheckShared
+  check:
+  nsExec::Exec `powershell.exe -NoProfile -NonInteractive -EncodedCommand ${CHECK_B64}`
+  Pop $0
+  StrCmp $0 "0" found
+!ifdef SHARE_URL
+  MessageBox MB_OKCANCEL|MB_ICONINFORMATION "עוד צעד אחד: חיבור לתיקייה המשותפת ב-OneDrive, כדי לקבל עדכונים ונתונים משותפים.$\r$\n$\r$\nאחרי 'אישור' התיקייה תיפתח בדפדפן. לחץ שם על 'הוסף קיצור דרך לקבצים שלי' (Add shortcut to My files)." /SD IDCANCEL IDCANCEL skip
+  ExecShell "open" "${SHARE_URL}"
+  MessageBox MB_OKCANCEL|MB_ICONQUESTION "אחרי שלחצת 'הוסף קיצור דרך לקבצים שלי', המתן דקה עד שהתיקייה תופיע ב-OneDrive במחשב, ואז לחץ 'אישור' לבדיקה.$\r$\n$\r$\n'ביטול' ידלג על השלב הזה." /SD IDCANCEL IDCANCEL skip
+!else
+  MessageBox MB_OKCANCEL|MB_ICONINFORMATION "התיקייה המשותפת 'אפליקציית כשרות - נתונים' לא נמצאה ב-OneDrive במחשב.$\r$\nבקש שישתפו אותה איתך, הוסף אותה ב-OneDrive ('הוסף קיצור דרך לקבצים שלי'), ולחץ 'אישור' לבדיקה.$\r$\n$\r$\n'ביטול' ידלג על השלב הזה." /SD IDCANCEL IDCANCEL skip
+!endif
+  Goto check
+  found:
+  DetailPrint "התיקייה המשותפת נמצאה"
+  Return
+  skip:
+  MessageBox MB_OK|MB_ICONEXCLAMATION "האפליקציה תעבוד גם בלי התיקייה המשותפת, אבל בלי עדכונים ובלי נתונים משותפים. אפשר להוסיף אותה מאוחר יותר ב-OneDrive." /SD IDOK
+FunctionEnd
+
 Function RunApp
   Exec `"$INSTDIR\node\node.exe" "$INSTDIR\bootstrap.js" --open`
 FunctionEnd
@@ -68,6 +91,7 @@ Section "install"
   WriteRegStr HKCU "${REGKEY}" "UninstallString" `"$INSTDIR\uninstall.exe"`
   WriteRegDWORD HKCU "${REGKEY}" "NoModify" 1
   WriteRegDWORD HKCU "${REGKEY}" "NoRepair" 1
+  Call CheckShared
 SectionEnd
 
 Section "Uninstall"
