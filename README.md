@@ -75,3 +75,5 @@ https://shirathayam.m-datit.org.il ומקבלים:
 | תעודות כשרות | `GET Data/Site/GetCertificateRequests` |
 | דיווחי משגיחים | `GET Data/Site/GetSiteSupervisorReport` |
 | תמונת מצב | `GET Data/General/GetHomePageDetails` |
+
+אחרי כל פרסום אוטומטי נכתבת קבלה בקובץ `last-auto-publish.txt` ב-GitHub.
