@@ -40,6 +40,10 @@ https://shirathayam.m-datit.org.il ומקבלים:
 - **שרת של המועצה או שרת ענן** (למשל Render, Railway או Azure App Service): מעלים את התיקייה ומגדירים פקודת הפעלה `node server.js`. השירותים האלה נותנים HTTPS אוטומטית. חשוב: אתרים ממשלתיים חוסמים לפעמים כתובות IP מחוץ לישראל, לכן עדיף שרת באזור ישראל (Azure Israel Central או שרת מקומי).
 - **מנהרה מהמחשב** (לבדיקות): `cloudflared tunnel --url http://localhost:3000` נותן כתובת HTTPS זמנית.
 
+## עדכון אוטומטי מ-GitHub
+
+במחשב HAIFA-KASH רצה משימה מתוזמנת (`kashrut-auto-publish`) כל 15 דקות שמריצה את `auto-publish.ps1`. היא מושכת קוד חדש מ-GitHub, ואם יש שינוי מריצה `publish-code.js`, כך ששינוי שנדחף ל-GitHub מגיע לכל המשתמשים בלי לגעת במחשב. ברשת המועצה git עובר דרך ה-Proxy `192.168.155.13:8080` (מוגדר ב-`git config --global http.https://github.com.proxy`). יומן: `Documents\kashrut-auto-publish.log` (נכתב רק כשיש עדכון או שגיאה).
+
 ## גישה מהמחשב השני (מנהרה)
 
 כשאתר "שירת הים" חוסם רשת מסוימת, אפשר להשתמש באפליקציה שרצה במחשב שבו הכניסה עובדת:
