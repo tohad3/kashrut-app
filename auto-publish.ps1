@@ -13,26 +13,40 @@ $node = Join-Path $env:LOCALAPPDATA 'nodejs-portable\node-v24.21.0-win-x64\node.
 if (-not (Test-Path $node)) { $node = 'node' }
 
 Set-Location $app
-# node writes UTF-8; read it as UTF-8 so the receipt keeps the Hebrew readable
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+# node writes UTF-8; read it as UTF-8 so the receipt keeps the Hebrew readable (can fail without a console)
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $env:GIT_TERMINAL_PROMPT = '0'
+# the commit that was last published successfully; publishing is retried until it matches HEAD
+$marker = Join-Path $app '.last-published'
 $out = & $git fetch -q origin main 2>&1
 if ($LASTEXITCODE -ne 0) { Log "fetch failed: $out"; exit 1 }
 $local = (& $git rev-parse HEAD).Trim()
 $remote = (& $git rev-parse origin/main).Trim()
 $base = (& $git merge-base HEAD origin/main).Trim()
-# nothing new on GitHub (or this PC is ahead and publish-code.js will push it next time)
-if ($local -eq $remote -or $remote -eq $base) { exit 0 }
-
-if (& $git status --porcelain) { Log 'skipped: there are unsaved local changes in kashrut-app (run node publish-code.js first)'; exit 1 }
-$out = & $git merge --no-edit origin/main 2>&1
-if ($LASTEXITCODE -ne 0) { & $git merge --abort 2>&1 | Out-Null; Log "merge failed, nothing published: $out"; exit 1 }
+if ($local -ne $remote -and $remote -ne $base) {
+  if (& $git status --porcelain) { Log 'skipped: there are unsaved local changes in kashrut-app (run node publish-code.js first)'; exit 1 }
+  $out = & $git merge --no-edit origin/main 2>&1
+  if ($LASTEXITCODE -ne 0) { & $git merge --abort 2>&1 | Out-Null; Log "merge failed, nothing published: $out"; exit 1 }
+}
+# the last commit that changed anything but the receipt; receipt commits never trigger a publish
+$code = (& $git log -1 --format=%H -- . ':(exclude)last-auto-publish.txt').Trim()
+$last = if (Test-Path $marker) { (Get-Content $marker -TotalCount 1).Trim() } else { '' }
+if ($code -eq $last) { exit 0 }
 
 $out = & $node publish-code.js 2>&1
-$head = & $git log -1 --format='%h %s'
-Log ("published " + $head + " | " + ($out -join ' / '))
-# a receipt on GitHub, so whoever pushed the change can see it reached the shared folder
-Set-Content -Path (Join-Path $app 'last-auto-publish.txt') -Encoding UTF8 -Value (@((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $head) + @($out))
+$ok = ($LASTEXITCODE -eq 0)
+$head = & $git log -1 --format='%h %s' $code
+Log ($(if ($ok) { 'published ' } else { 'publish FAILED, will retry: ' }) + $head + ' | ' + ($out -join ' / '))
+if ($ok) { Set-Content -Path $marker -Value $code }
+# a failure is reported on GitHub once per commit, then retried quietly every run
+$failMarker = Join-Path $app '.last-failed'
+if (-not $ok) {
+  if ((Test-Path $failMarker) -and ((Get-Content $failMarker -TotalCount 1).Trim() -eq $code)) { exit 1 }
+  Set-Content -Path $failMarker -Value $code
+}
+# a receipt on GitHub, so whoever pushed the change can see it reached the shared folder (or why not)
+$status = if ($ok) { '' } else { 'PUBLISH FAILED, retrying every run  ' }
+Set-Content -Path (Join-Path $app 'last-auto-publish.txt') -Encoding UTF8 -Value (@($status + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $head) + @($out | ForEach-Object { "$_" }))
 & $git add last-auto-publish.txt 2>&1 | Out-Null
 & $git commit -q -m 'auto-publish receipt' 2>&1 | Out-Null
 $out = & $git push -q origin HEAD:main 2>&1

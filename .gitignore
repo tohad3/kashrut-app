@@ -21,3 +21,5 @@ Thumbs.db
 desktop.ini
 installer/node.exe
 dist/
+.last-published
+.last-failed

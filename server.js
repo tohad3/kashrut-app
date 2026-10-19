@@ -33,24 +33,37 @@ function resolveSharedDir() {
   if (process.env.KASHRUT_SHARED_DIR) { try { if (fs.existsSync(process.env.KASHRUT_SHARED_DIR)) return process.env.KASHRUT_SHARED_DIR; } catch {} }
   const home = process.env.USERPROFILE || process.env.HOME || require('os').homedir();
   const TARGET = 'אפליקציית כשרות - נתונים';
+  // יכולות להיות כמה תיקיות בשם הזה (למשל עותק ישן שהועתק ידנית ליד קיצור הדרך לתיקייה המשותפת).
+  // בוחרים את זו שהקוד בה פורסם לאחרונה (_app\version.txt), כי היא התיקייה המשותפת החיה.
+  const found = [];
   try {
     for (const d of fs.readdirSync(home)) {
       if (!/^OneDrive/i.test(d)) continue;
       const base = path.join(home, d);
-      try { const exact = path.join(base, TARGET); if (fs.existsSync(exact)) return exact; } catch {}
       try {
         for (const sub of fs.readdirSync(base)) {
-          if (sub === TARGET || sub.endsWith(TARGET)) {
-            const cand = path.join(base, sub);
-            try { if (fs.statSync(cand).isDirectory()) return cand; } catch {}
-          }
+          if (sub !== TARGET && !sub.endsWith(TARGET)) continue;
+          const cand = path.join(base, sub);
+          try { if (fs.statSync(cand).isDirectory()) found.push(cand); } catch {}
         }
       } catch {}
     }
   } catch {}
-  return null;
+  const stamp = (dir) => { try { return fs.statSync(path.join(dir, '_app', 'version.txt')).mtimeMs; } catch { return 0; } };
+  found.sort((a, b) => stamp(b) - stamp(a));
+  return found[0] || null;
 }
 let SHARED_DIR = resolveSharedDir();
+// התקנות ישנות מריצות bootstrap.js שלא מעדכן את עצמו; השרת מעדכן אותו (ואת האייקון) מ-_app, ומההפעלה הבאה
+// רץ ה-bootstrap החדש, שמעדכן את האפליקציה גם בלי לסגור אותה.
+if (SHARED_DIR) {
+  for (const f of ['bootstrap.js', 'kashrut.ico']) {
+    try {
+      const src = path.join(SHARED_DIR, '_app', f), dst = path.join(__dirname, f);
+      if (fs.existsSync(src) && (!fs.existsSync(dst) || !fs.readFileSync(src).equals(fs.readFileSync(dst)))) fs.copyFileSync(src, dst);
+    } catch {}
+  }
+}
 console.log(SHARED_DIR ? `נתונים משותפים: ${SHARED_DIR}` : 'נתונים משותפים: OneDrive לא נמצא — עובד מהגיבוי המקומי בלבד');
 
 // מקומות לקריאת קובץ משותף, לפי עדיפות: OneDrive, גיבוי מקומי, המיקום הישן (data/)

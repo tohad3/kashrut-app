@@ -11,15 +11,25 @@ function resolveSharedDir() {
   if (process.env.KASHRUT_SHARED_DIR) { try { if (fs.existsSync(process.env.KASHRUT_SHARED_DIR)) return process.env.KASHRUT_SHARED_DIR; } catch {} }
   const home = process.env.USERPROFILE || process.env.HOME || require('os').homedir();
   const TARGET = 'אפליקציית כשרות - נתונים';
+  // יכולות להיות כמה תיקיות בשם הזה (למשל עותק ישן שהועתק ידנית ליד קיצור הדרך לתיקייה המשותפת).
+  // בוחרים את זו שהקוד בה פורסם לאחרונה (_app\version.txt), כי היא התיקייה המשותפת החיה.
+  const found = [];
   try {
     for (const d of fs.readdirSync(home)) {
       if (!/^OneDrive/i.test(d)) continue;
       const base = path.join(home, d);
-      try { const exact = path.join(base, TARGET); if (fs.existsSync(exact)) return exact; } catch {}
-      try { for (const sub of fs.readdirSync(base)) { if (sub === TARGET || sub.endsWith(TARGET)) { const c = path.join(base, sub); try { if (fs.statSync(c).isDirectory()) return c; } catch {} } } } catch {}
+      try {
+        for (const sub of fs.readdirSync(base)) {
+          if (sub !== TARGET && !sub.endsWith(TARGET)) continue;
+          const cand = path.join(base, sub);
+          try { if (fs.statSync(cand).isDirectory()) found.push(cand); } catch {}
+        }
+      } catch {}
     }
   } catch {}
-  return null;
+  const stamp = (dir) => { try { return fs.statSync(path.join(dir, '_app', 'version.txt')).mtimeMs; } catch { return 0; } };
+  found.sort((a, b) => stamp(b) - stamp(a));
+  return found[0] || null;
 }
 
 function copyFile(src, dst) {
@@ -36,21 +46,27 @@ function copyDir(src, dst) {
   }
 }
 
-try {
-  const shared = resolveSharedDir();
-  const codeDir = shared && path.join(shared, '_app');
-  if (codeDir && fs.existsSync(codeDir) && fs.existsSync(path.join(codeDir, 'server.js'))) {
+const shared = resolveSharedDir();
+const codeDir = shared && path.join(shared, '_app');
+const versionOf = () => { try { return fs.readFileSync(path.join(codeDir, 'version.txt'), 'utf8').trim(); } catch { return ''; } };
+
+// מעתיק את הקוד מ-_app. מחזיר true אם הועתק.
+function pullCode() {
+  try {
+    if (!codeDir || !fs.existsSync(path.join(codeDir, 'server.js'))) return false;
     copyFile(path.join(codeDir, 'server.js'), path.join(HERE, 'server.js'));
     if (fs.existsSync(path.join(codeDir, 'public'))) copyDir(path.join(codeDir, 'public'), path.join(HERE, 'public'));
-    // גם האייקון ו-bootstrap.js עצמו מתעדכנים (הגרסה החדשה תרוץ מההפעלה הבאה)
+    // גם האייקון ו-bootstrap.js עצמו מתעדכנים (הגרסה החדשה של bootstrap תרוץ מההפעלה הבאה)
     for (const f of ['kashrut.ico', 'bootstrap.js']) if (fs.existsSync(path.join(codeDir, f))) copyFile(path.join(codeDir, f), path.join(HERE, f));
-    console.log('✓ קוד האפליקציה עודכן מהתיקייה המשותפת');
-  } else {
-    console.log('(אין עדכון קוד משותף זמין — עובד עם הקוד המקומי)');
+    return true;
+  } catch (e) {
+    console.warn('עדכון הקוד נכשל, ממשיך עם הקוד המקומי: ' + e.message);
+    return false;
   }
-} catch (e) {
-  console.warn('עדכון הקוד נכשל, ממשיך עם הקוד המקומי: ' + e.message);
 }
+
+let version = versionOf();
+console.log(pullCode() ? '✓ קוד האפליקציה עודכן מהתיקייה המשותפת' : '(אין עדכון קוד משותף זמין — עובד עם הקוד המקומי)');
 
 // קיצור הדרך בשולחן העבודה נבנה מחדש בכל הפעלה, כך ששינוי שם או אייקון כאן מגיע לכל המחשבים.
 // מפעיל את node ישירות (בלי cmd/.bat, שחסומים בחלק ממחשבי המועצה).
@@ -97,7 +113,29 @@ const OPEN = process.argv.includes('--open');
 alreadyRunning().then((running) => {
   if (running) { if (OPEN) openBrowser(); return; }
   // הפעלת השרת (הקוד שזה עתה עודכן)
-  spawn(process.execPath, [path.join(HERE, 'server.js')], { stdio: 'inherit' })
-    .on('exit', (code) => process.exit(code || 0));
+  let child, restarting = false;
+  const start = () => {
+    child = spawn(process.execPath, [path.join(HERE, 'server.js')], { stdio: 'inherit' });
+    child.on('exit', (code) => {
+      if (restarting) { restarting = false; start(); return; }
+      process.exit(code || 0);
+    });
+  };
+  start();
   if (OPEN) setTimeout(openBrowser, 2000);
+
+  // עדכון בלי לסגור את האפליקציה: כשמתפרסמת גרסה חדשה ל-_app, מעתיקים ומפעילים את השרת מחדש.
+  // אחרי זה מספיק לרענן את הדף בדפדפן.
+  let pending = '';
+  setInterval(() => {
+    const v = versionOf();
+    if (!v || v === version) { pending = ''; return; }
+    // OneDrive מסנכרן קבצים בסדר לא ידוע, לכן ממתינים בדיקה אחת נוספת לפני ההעתקה
+    if (pending !== v) { pending = v; return; }
+    version = v; pending = '';
+    if (!pullCode()) return;
+    console.log('✓ גרסה חדשה הגיעה (' + v + '), מפעיל מחדש את השרת. רענן את הדף בדפדפן.');
+    restarting = true;
+    child.kill();
+  }, Number(process.env.KASHRUT_UPDATE_MS) || 2 * 60 * 1000);
 });
