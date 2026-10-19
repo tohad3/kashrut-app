@@ -42,7 +42,7 @@ https://shirathayam.m-datit.org.il ומקבלים:
 
 ## עדכון אוטומטי מ-GitHub
 
-במחשב HAIFA-KASH רצה משימה מתוזמנת (`kashrut-auto-publish`) כל 15 דקות שמריצה את `auto-publish.ps1`. היא מושכת קוד חדש מ-GitHub, ואם יש שינוי מריצה `publish-code.js`, כך ששינוי שנדחף ל-GitHub מגיע לכל המשתמשים בלי לגעת במחשב. ברשת המועצה git עובר דרך ה-Proxy `192.168.155.13:8080` (מוגדר ב-`git config --global http.https://github.com.proxy`). יומן: `Documents\kashrut-auto-publish.log` (נכתב רק כשיש עדכון או שגיאה).
+במחשב HAIFA-KASH רצה משימה מתוזמנת (`kashrut-auto-publish`) כל 5 דקות שמריצה את `auto-publish.ps1`. היא מושכת קוד חדש מ-GitHub, ואם יש שינוי מריצה `publish-code.js`, כך ששינוי שנדחף ל-GitHub מגיע לכל המשתמשים בלי לגעת במחשב. ברשת המועצה git עובר דרך ה-Proxy `192.168.155.13:8080` (מוגדר ב-`git config --global http.https://github.com.proxy`). יומן: `Documents\kashrut-auto-publish.log` (נכתב רק כשיש עדכון או שגיאה).
 
 ## גישה מהמחשב השני (מנהרה)
 

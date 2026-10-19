@@ -1,4 +1,4 @@
-# auto-publish.ps1 - runs every 15 minutes from Task Scheduler (task "kashrut-auto-publish").
+# auto-publish.ps1 - runs every 5 minutes from Task Scheduler (task "kashrut-auto-publish").
 # Pulls new code from GitHub and, if anything changed, publishes it to the shared OneDrive folder
 # with publish-code.js, so changes pushed from the cloud reach every user without touching this PC.
 # Writes to the log only when there is an update or an error. ASCII only (Windows PowerShell 5 reads it as ANSI).
