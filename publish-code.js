@@ -29,15 +29,18 @@ copyFile(path.join(HERE, 'server.js'), path.join(dst, 'server.js'));
 copyFile(path.join(HERE, 'bootstrap.js'), path.join(dst, 'bootstrap.js'));
 if (fs.existsSync(path.join(HERE, 'kashrut.ico'))) copyFile(path.join(HERE, 'kashrut.ico'), path.join(dst, 'kashrut.ico'));
 copyDir(path.join(HERE, 'public'), path.join(dst, 'public'));
-// קובץ ההתקנה לעמיתים חדשים, בראש התיקייה המשותפת (רק כשהוא השתנה)
-const setup = path.join(HERE, 'installer', 'release', 'kashrut-setup.exe');
-const setupDst = path.join(shared, 'התקנת ניהול כשרות.exe');
+// התקנה לעמיתים חדשים, בלי exe: סקריפט PowerShell בראש התיקייה המשותפת, ו-Node (זה שמריץ את הפרסום) ב-_app\node
 try {
-  if (fs.existsSync(setup) && (!fs.existsSync(setupDst) || fs.statSync(setupDst).size !== fs.statSync(setup).size || fs.statSync(setupDst).mtimeMs < fs.statSync(setup).mtimeMs)) {
-    copyFile(setup, setupDst);
-    console.log('✓ קובץ ההתקנה עודכן בתיקייה המשותפת');
+  copyFile(path.join(HERE, 'installer', 'install.ps1'), path.join(shared, 'התקנת ניהול כשרות.ps1'));
+  const nodeDst = path.join(dst, 'node', 'node.exe');
+  if (process.platform === 'win32' && (!fs.existsSync(nodeDst) || fs.statSync(nodeDst).size !== fs.statSync(process.execPath).size)) {
+    copyFile(process.execPath, nodeDst);
+    console.log('✓ Node הועתק לתיקייה המשותפת (להתקנה אצל עמיתים)');
   }
-} catch (e) { console.warn('⚠ העתקת קובץ ההתקנה נכשלה: ' + e.message); }
+  // קובץ ה-exe הקודם נחסם ב-SmartScreen, ולכן הוסר לטובת הסקריפט
+  const oldExe = path.join(shared, 'התקנת ניהול כשרות.exe');
+  if (fs.existsSync(oldExe)) fs.unlinkSync(oldExe);
+} catch (e) { console.warn('⚠ פרסום קובץ ההתקנה נכשל: ' + e.message); }
 fs.writeFileSync(path.join(dst, 'version.txt'), new Date().toISOString() + '\n');
 console.log('✓ הקוד פורסם לתיקייה המשותפת: ' + dst);
 

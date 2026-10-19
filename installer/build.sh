@@ -23,5 +23,5 @@ set -- -V2 -DVERSION="$(date +%Y.%m.%d)" -DCHECK_B64="$CHECK_B64"
 [ -n "$SHARE_URL" ] && set -- "$@" -DSHARE_URL="$SHARE_URL"
 (cd "$STAGE" && makensis "$@" kashrut-setup.nsi)
 mkdir -p "$ROOT/dist"
-cp "$STAGE/kashrut-setup.exe" "$ROOT/dist/התקנת ניהול כשרות.exe"
-mkdir -p "$HERE/release" && mv -f "$STAGE/kashrut-setup.exe" "$HERE/release/kashrut-setup.exe"
+mv -f "$STAGE/kashrut-setup.exe" "$ROOT/dist/התקנת ניהול כשרות.exe"
+
