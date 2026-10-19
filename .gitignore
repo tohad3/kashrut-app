@@ -19,3 +19,5 @@ node_modules/
 *.log
 Thumbs.db
 desktop.ini
+installer/node.exe
+dist/
