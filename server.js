@@ -419,6 +419,8 @@ async function login(req, res, body) {
       await data(s, ep, { query: ep.startsWith('Authentication') ? { moduleID: s.user.moduleId } : { ModuleID: s.user.moduleId } });
     } catch (e) { console.warn(`[login] ${ep}: ${e.message}`); }
   }
+  try { s.user.inspector = await isInspector(s); } catch (e) { console.warn(`[login] inspector check: ${e.message}`); }
+  try { s.user.scoped = !!(await scopeOf(s)); } catch (e) { console.warn(`[login] scope: ${e.message}`); }
   send(res, 200, { user: s.user }, { 'Set-Cookie': cookie });
 }
 
@@ -619,6 +621,46 @@ function resolveRole(user) {
   return 'viewer';
 }
 
+/* ---------- inspector scope ---------- */
+// מפקח שנכנס (ואינו מנהל) רואה רק את העסקים שהוא רשום עליהם כמפקח בשירת הים,
+// ורק את המשגיחים שרשומים על העסקים האלה. מנהל רואה הכול.
+const nameKey = (n) => String(n || '').replace(/["'׳״.]/g, '').trim().split(/\s+/).filter((w) => w && w !== 'הרב').sort().join(' ');
+const splitNames = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean);
+const bizNorm = (v) => String(v || '').replace(/["'׳״`]/g, '').replace(/[-–—_/\\().,:;|+&]/g, ' ').replace(/\s+/g, ' ').trim();
+
+// האם המשתמש רשום באתר כמפקח (קבוצה 20)
+async function isInspector(s) {
+  const j = await data(s, 'General/GetUsersByGroupAndAuthority', { query: { GroupID: 20, AuthorityID: s.user.authorityId, IsActive: true } });
+  const rows = (Array.isArray(j) ? j : j.RetVal) || [];
+  return rows.some((x) => String(x.ID ?? x.UserID) === String(s.user.userId));
+}
+
+// null = רואה הכול. אחרת: העסקים של המפקח והמשגיחים שלהם
+async function scopeOf(s) {
+  if (s.user.role === 'admin') return null;
+  const me = nameKey(s.user.name);
+  const mine = (await getSites(s)).filter((x) => splitNames(x.inspectors).some((n) => nameKey(n) === me));
+  if (!mine.length && !s.user.inspector) return null;
+  return {
+    me,
+    siteIds: new Set(mine.map((x) => x.id)),
+    siteNames: new Set(mine.map((x) => bizNorm(x.name))),
+    people: new Set([me, ...mine.flatMap((x) => splitNames(x.supervisors).map(nameKey))]),
+  };
+}
+
+// נתוני המשגיחים מ"לוח משגיחים" + עריכות מהאפליקציה
+function staffExtra() {
+  let extra = { people: [] };
+  try { extra = JSON.parse(fs.readFileSync(dataReadPath('staff-extra.json'), 'utf8')); } catch {}
+  const notes = readJson('staff-notes.json');
+  const known = new Set((extra.people || []).map((x) => x.id));
+  extra.people = (extra.people || []).map((x) => ({ ...x, whatsapp: '', ...pick(notes[x.id], STAFF_FIELDS), edited: !!notes[x.id] }));
+  // אנשים שנוספו מהאפליקציה ואינם ב"לוח משגיחים"
+  for (const [id, n] of Object.entries(notes)) if (!known.has(id) && n.name) extra.people.push({ id, name: n.name, tel: '', phone: 'unknown', phoneNote: '', declaration: false, certificate: '', active: true, notes: '', whatsapp: '', ...pick(n, STAFF_FIELDS), edited: true, added: true });
+  return extra;
+}
+
 /* ---------- http plumbing ---------- */
 
 function send(res, status, obj, headers = {}) {
@@ -676,6 +718,15 @@ const server = http.createServer(async (req, res) => {
 
     let m;
     if (p === '/api/me') return send(res, 200, { user: s.user });
+    // מפקח: רק העסקים והמשגיחים שלו (נבדק רק בנתיבים שמחזירים עסקים או משגיחים)
+    const scope = /^\/api\/(sites|biz-extra|biz-edit\/|staff-extra|staff-status|last-reports|reports|trails|site\/)/.test(p) ? await scopeOf(s) : null;
+    if (scope) {
+      if ((m = /^\/api\/(?:site|biz-edit)\/(\d+)/.exec(p)) && !scope.siteIds.has(Number(m[1]))) return send(res, 403, { error: 'העסק אינו משויך אליך' });
+      if ((m = /^\/api\/staff-extra\/([\w-]{1,40})$/.exec(p)) && m[1] !== 'new') {
+        const x = staffExtra().people.find((y) => y.id === m[1]);
+        if (!x || !scope.people.has(nameKey(x.name))) return send(res, 403, { error: 'המשגיח אינו משויך לעסקים שלך' });
+      }
+    }
     // ניהול הרשאות (מנהל בלבד – מגודר למעלה)
     if (p === '/api/roles' && req.method === 'GET') return send(res, 200, { roles: readRoles(), meId: s.user.userId });
     if ((m = /^\/api\/roles\/([\w-]{1,40})$/.exec(p)) && req.method === 'POST') {
@@ -693,18 +744,16 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true });
     }
     if (p === '/api/home') return send(res, 200, await homeSummary(s));
-    if (p === '/api/sites') return send(res, 200, await getSites(s, url.searchParams.get('refresh') === '1'));
+    if (p === '/api/sites') {
+      const list = await getSites(s, url.searchParams.get('refresh') === '1');
+      return send(res, 200, scope ? list.filter((x) => scope.siteIds.has(x.id)) : list);
+    }
     // נתוני משגיחים שאינם באתר (טלפון, טלפון כשר, הצהרה, תעודה) – מיובאים מ"לוח משגיחים" לקובץ מקומי
     // נתוני משגיחים שאינם באתר (טלפון, טלפון כשר, הצהרה, תעודה...) – יובאו מ"לוח משגיחים" לקובץ מקומי.
     // עריכות מהאפליקציה נשמרות בקובץ נפרד (staff-notes.json) ומולבשות על הרשומה, כך שייבוא חוזר לא מוחק אותן.
     if (p === '/api/staff-extra') {
-      let extra = { people: [] };
-      try { extra = JSON.parse(fs.readFileSync(dataReadPath('staff-extra.json'), 'utf8')); } catch {}
-      const notes = readJson('staff-notes.json');
-      const known = new Set((extra.people || []).map((x) => x.id));
-      extra.people = (extra.people || []).map((x) => ({ ...x, whatsapp: '', ...pick(notes[x.id], STAFF_FIELDS), edited: !!notes[x.id] }));
-      // אנשים שנוספו מהאפליקציה ואינם ב"לוח משגיחים"
-      for (const [id, n] of Object.entries(notes)) if (!known.has(id) && n.name) extra.people.push({ id, name: n.name, tel: '', phone: 'unknown', phoneNote: '', declaration: false, certificate: '', active: true, notes: '', whatsapp: '', ...pick(n, STAFF_FIELDS), edited: true, added: true });
+      const extra = staffExtra();
+      if (scope) extra.people = extra.people.filter((x) => scope.people.has(nameKey(x.name)));
       return send(res, 200, extra);
     }
     if ((m = /^\/api\/staff-extra\/([\w-]{1,40})$/.exec(p)) && req.method === 'POST') {
@@ -733,6 +782,15 @@ const server = http.createServer(async (req, res) => {
       try { extra = JSON.parse(fs.readFileSync(dataReadPath('biz-extra.json'), 'utf8')); } catch {}
       extra.edits = readJson('biz-edits.json');
       extra.links = readJson('biz-links.json'); // חיבור ידני: מזהה עסק בלוח -> מזהה עסק באתר (כשהשמות שונים)
+      if (scope) {
+        const sups = new Set(staffExtra().people.filter((x) => scope.people.has(nameKey(x.name))).map((x) => x.id));
+        extra.businesses = (extra.businesses || [])
+          .filter((b) => scope.siteIds.has(Number(extra.links[b.id])) || scope.siteNames.has(bizNorm(b.name)) || nameKey(b.inspector) === scope.me)
+          .map((b) => (Array.isArray(b.sups) ? { ...b, sups: b.sups.filter((id) => sups.has(id)) } : b));
+        const keep = new Set(extra.businesses.map((b) => b.id));
+        extra.links = Object.fromEntries(Object.entries(extra.links).filter(([id]) => keep.has(id)));
+        extra.edits = Object.fromEntries(Object.entries(extra.edits).filter(([id]) => scope.siteIds.has(Number(id))));
+      }
       return send(res, 200, extra);
     }
     if ((m = /^\/api\/biz-edit\/(\d+)$/.exec(p)) && req.method === 'POST') {
@@ -783,13 +841,19 @@ const server = http.createServer(async (req, res) => {
           }
         }
       }
-      return send(res, 200, { people: out, sampleKeys: sample });
+      return send(res, 200, { people: scope ? out.filter((x) => scope.people.has(nameKey(x.name))) : out, sampleKeys: sample });
     }
-    if (p === '/api/last-reports') return send(res, 200, await lastReports(s, url.searchParams));
-    if (p === '/api/reports') return send(res, 200, await reports(s, url.searchParams));
+    if (p === '/api/last-reports') {
+      const r = await lastReports(s, url.searchParams);
+      return send(res, 200, scope ? { ...r, people: r.people.filter((x) => scope.people.has(nameKey(x.name))) } : r);
+    }
+    if (p === '/api/reports') {
+      const rows = await reports(s, url.searchParams);
+      return send(res, 200, scope ? rows.filter((x) => scope.people.has(nameKey(x.supervisor))) : rows);
+    }
     if (p === '/api/trails') {
       const c = trailCache(s.user.authorityId);
-      return send(res, 200, { job: c.job || { done: true, total: 0, fetched: 0 }, trails: Object.fromEntries(Object.entries(c.trails).map(([id, t]) => [id, t.rows])) });
+      return send(res, 200, { job: c.job || { done: true, total: 0, fetched: 0 }, trails: Object.fromEntries(Object.entries(c.trails).filter(([id]) => !scope || scope.siteIds.has(Number(id))).map(([id, t]) => [id, t.rows])) });
     }
     if (p === '/api/trails/refresh' && req.method === 'POST') return send(res, 200, startTrailJob(s));
     if (p === '/api/coords/status') return send(res, 200, coordCache(s.user.authorityId).job || { done: true, total: 0, fetched: 0 });

@@ -237,7 +237,7 @@ async function start(user) {
   state.user = user;
   document.body.dataset.role = user.role || 'viewer';
   $('#userName').textContent = user.name;
-  $('#authorityName').textContent = `${user.authorityName || ''} · ${user.moduleName || 'כשרות'}${user.role ? ' · ' + ROLE_LABEL[user.role] : ''}`;
+  $('#authorityName').textContent = `${user.authorityName || ''} · ${user.moduleName || 'כשרות'}${user.role ? ' · ' + ROLE_LABEL[user.role] : ''}${user.scoped ? ' · רק העסקים והמשגיחים שלך' : ''}`;
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
   let view = 'dashboard';
