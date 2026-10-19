@@ -13,6 +13,8 @@ $node = Join-Path $env:LOCALAPPDATA 'nodejs-portable\node-v24.21.0-win-x64\node.
 if (-not (Test-Path $node)) { $node = 'node' }
 
 Set-Location $app
+# node writes UTF-8; read it as UTF-8 so the receipt keeps the Hebrew readable
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $env:GIT_TERMINAL_PROMPT = '0'
 $out = & $git fetch -q origin main 2>&1
 if ($LASTEXITCODE -ne 0) { Log "fetch failed: $out"; exit 1 }
