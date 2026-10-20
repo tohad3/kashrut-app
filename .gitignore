@@ -23,3 +23,5 @@ installer/node.exe
 dist/
 .last-published
 .last-failed
+launch.log
+launch.log.old

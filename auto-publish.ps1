@@ -44,9 +44,31 @@ if (-not $ok) {
   if ((Test-Path $failMarker) -and ((Get-Content $failMarker -TotalCount 1).Trim() -eq $code)) { exit 1 }
   Set-Content -Path $failMarker -Value $code
 }
+# this PC's app shortcuts and last launches, so a shortcut problem here can be diagnosed from GitHub
+function Diag {
+  '--- shortcuts on this PC ---'
+  $sh = New-Object -ComObject WScript.Shell
+  $dirs = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('CommonDesktopDirectory'), (Join-Path ([Environment]::GetFolderPath('Programs')) ''))
+  foreach ($d in $dirs | Select-Object -Unique) {
+    if (-not $d -or -not (Test-Path $d)) { continue }
+    Get-ChildItem -LiteralPath $d -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object {
+      $l = $sh.CreateShortcut($_.FullName)
+      if (($l.TargetPath + $l.Arguments) -notmatch 'kashrut|bootstrap|node|start\.') { return }
+      "$($_.FullName) | target: $($l.TargetPath) (exists: $(Test-Path -LiteralPath $l.TargetPath)) | args: $($l.Arguments) | dir: $($l.WorkingDirectory) | style: $($l.WindowStyle) | modified: $($_.LastWriteTime.ToString('yyyy-MM-dd HH:mm'))"
+    }
+  }
+  '--- node processes ---'
+  Get-CimInstance Win32_Process -Filter "name='node.exe'" -ErrorAction SilentlyContinue | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }
+  $c = New-Object Net.Sockets.TcpClient
+  try { $c.Connect('127.0.0.1', 3000); 'port 3000: answering' } catch { 'port 3000: not answering' } finally { $c.Close() }
+  foreach ($f in @((Join-Path $app 'launch.log'), (Join-Path $env:USERPROFILE 'kashrut-app\launch.log'))) {
+    if (Test-Path $f) { "--- $f ---"; Get-Content $f -Tail 25 -Encoding UTF8 }
+  }
+}
+$diag = try { Diag 2>&1 | ForEach-Object { "$_" } } catch { "diag failed: $_" }
 # a receipt on GitHub, so whoever pushed the change can see it reached the shared folder (or why not)
 $status = if ($ok) { '' } else { 'PUBLISH FAILED, retrying every run  ' }
-Set-Content -Path (Join-Path $app 'last-auto-publish.txt') -Encoding UTF8 -Value (@($status + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $head) + @($out | ForEach-Object { "$_" }))
+Set-Content -Path (Join-Path $app 'last-auto-publish.txt') -Encoding UTF8 -Value (@($status + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $head) + @($out | ForEach-Object { "$_" }) + @($diag))
 & $git add last-auto-publish.txt 2>&1 | Out-Null
 & $git commit -q -m 'auto-publish receipt' 2>&1 | Out-Null
 $out = & $git push -q origin HEAD:main 2>&1

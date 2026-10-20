@@ -95,8 +95,20 @@ function refreshShortcut() {
   } catch {}
 }
 
+// יומן הפעלה קצר ליד האפליקציה, כדי שאפשר יהיה לראות למה קיצור הדרך לא נפתח
+const LAUNCH_LOG = path.join(HERE, 'launch.log');
+function launchLog(msg) {
+  try {
+    if (fs.existsSync(LAUNCH_LOG) && fs.statSync(LAUNCH_LOG).size > 200000) fs.renameSync(LAUNCH_LOG, LAUNCH_LOG + '.old');
+    fs.appendFileSync(LAUNCH_LOG, new Date().toISOString() + '  ' + String(msg).trimEnd() + '\n');
+  } catch {}
+}
+process.on('uncaughtException', (e) => { launchLog('bootstrap error: ' + (e && e.stack || e)); process.exit(1); });
+
 function openBrowser() {
-  if (process.platform === 'win32') spawn('explorer.exe', [URL], { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+  if (process.platform !== 'win32') return;
+  launchLog('opening browser');
+  spawn('explorer.exe', [URL], { stdio: 'ignore', detached: true }).on('error', (e) => launchLog('explorer failed: ' + e.message)).unref();
 }
 
 // עונה אם האפליקציה כבר רצה (למשל לחיצה שנייה על קיצור הדרך)
@@ -110,19 +122,32 @@ function alreadyRunning() {
 
 refreshShortcut();
 const OPEN = process.argv.includes('--open');
+launchLog('start ' + process.execPath + ' ' + process.argv.slice(1).join(' ') + ' | shared: ' + (shared || 'not found') + ' | version: ' + (version || '-'));
+// פותח את הדפדפן רק כשהשרת כבר עונה (במחשב איטי או עם OneDrive עמוס זה יכול לקחת יותר מכמה שניות)
+async function openWhenReady() {
+  for (let i = 0; i < 90; i++) {
+    if (await alreadyRunning()) { openBrowser(); return; }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  launchLog('server did not answer on ' + URL + ' within 90s');
+}
 alreadyRunning().then((running) => {
-  if (running) { if (OPEN) openBrowser(); return; }
-  // הפעלת השרת (הקוד שזה עתה עודכן)
+  if (running) { launchLog('already running'); if (OPEN) openBrowser(); return; }
+  // הפעלת השרת (הקוד שזה עתה עודכן). הפלט מוצג בחלון וגם נשמר ביומן, כדי שתקלה בהפעלה לא תיעלם עם החלון.
   let child, restarting = false;
   const start = () => {
-    child = spawn(process.execPath, [path.join(HERE, 'server.js')], { stdio: 'inherit' });
+    child = spawn(process.execPath, [path.join(HERE, 'server.js')], { stdio: ['inherit', 'pipe', 'pipe'] });
+    child.stdout.on('data', (b) => process.stdout.write(b));
+    child.stderr.on('data', (b) => { process.stderr.write(b); launchLog('server: ' + b); });
+    child.on('error', (e) => launchLog('server failed to start: ' + e.message));
     child.on('exit', (code) => {
       if (restarting) { restarting = false; start(); return; }
+      launchLog('server exited with code ' + code);
       process.exit(code || 0);
     });
   };
   start();
-  if (OPEN) setTimeout(openBrowser, 2000);
+  if (OPEN) openWhenReady();
 
   // עדכון בלי לסגור את האפליקציה: כשמתפרסמת גרסה חדשה ל-_app, מעתיקים ומפעילים את השרת מחדש.
   // אחרי זה מספיק לרענן את הדף בדפדפן.
