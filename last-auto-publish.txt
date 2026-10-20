@@ -1,15 +1,15 @@
-﻿2026-10-20 12:33:03  34dc8e7 מחשב המועצה: קיצורי הדרך של ניהול משגיחים ומעקב אאוטלוק מופעלים דרך PowerShell במקום start.bat החסום
+﻿2026-10-20 12:38:02  bd8389e README: הפעלת שאר האפליקציות במחשב המועצה
 · בתיקייה המשותפת: סקריפט התקנה קיים, Node 94MB
 ✓ הקוד פורסם לתיקייה המשותפת: C:\Users\ohadt\OneDrive - מועצה דתית\אפליקציית כשרות - נתונים\_app
 ✓ הגיבוי ב-GitHub עודכן
 --- shortcuts on this PC ---
-C:\Users\ohadt\Desktop\מעקב אאוטלוק.lnk | target: C:\Users\ohadt\Documents\outlook-tracker\start.bat (exists: True) | args:  | dir: C:\Users\ohadt\Documents\outlook-tracker | style: 7 | modified: 2026-10-14 11:22
+C:\Users\ohadt\Desktop\מעקב אאוטלוק.lnk | target: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe (exists: True) | args: -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Users\ohadt\Documents\kashrut-app\launch-app.ps1" -Dir "C:\Users\ohadt\Documents\outlook-tracker" -Port 3200 | dir: C:\Users\ohadt\Documents\outlook-tracker | style: 7 | modified: 2026-10-20 12:38
 C:\Users\ohadt\Desktop\ניהול כשרות.lnk | target: C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe (exists: True) | args: "C:\Users\ohadt\Documents\kashrut-app\bootstrap.js" --open | dir: C:\Users\ohadt\Documents\kashrut-app | style: 7 | modified: 2026-10-20 11:11
-C:\Users\ohadt\Desktop\ניהול משגיחים.lnk | target: C:\Users\ohadt\Documents\mashgichim-app\start.bat (exists: True) | args:  | dir: C:\Users\ohadt\Documents\mashgichim-app | style: 1 | modified: 2026-10-13 10:50
+C:\Users\ohadt\Desktop\ניהול משגיחים.lnk | target: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe (exists: True) | args: -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Users\ohadt\Documents\kashrut-app\launch-app.ps1" -Dir "C:\Users\ohadt\Documents\mashgichim-app" -Port 3100 | dir: C:\Users\ohadt\Documents\mashgichim-app | style: 7 | modified: 2026-10-20 12:38
 --- node processes ---
 6888 "C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe" server.js 
 21216 "C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe" "C:\Users\ohadt\Documents\kashrut-app\bootstrap.js" --open
-14416 C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe C:\Users\ohadt\Documents\kashrut-app\server.js
+6152 C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe C:\Users\ohadt\Documents\kashrut-app\server.js
 port 3000: answering
 --- C:\Users\ohadt\Documents\kashrut-app\launch.log ---
 2026-10-20T08:11:51.735Z  start C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe C:\Users\ohadt\Documents\kashrut-app\bootstrap.js --open | shared: C:\Users\ohadt\OneDrive - מועצה דתית\אפליקציית כשרות - נתונים | version: 2026-10-20T07:53:00.819Z
