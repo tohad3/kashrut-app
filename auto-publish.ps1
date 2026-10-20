@@ -28,6 +28,23 @@ if ($local -ne $remote -and $remote -ne $base) {
   $out = & $git merge --no-edit origin/main 2>&1
   if ($LASTEXITCODE -ne 0) { & $git merge --abort 2>&1 | Out-Null; Log "merge failed, nothing published: $out"; exit 1 }
 }
+# cmd/.bat are blocked on this PC, so a desktop shortcut of this app that still points at start.bat
+# is switched to run node with bootstrap.js directly (bootstrap.js keeps it up to date from then on)
+try {
+  $sh = New-Object -ComObject WScript.Shell
+  Get-ChildItem -LiteralPath ([Environment]::GetFolderPath('Desktop')) -Filter *.lnk -ErrorAction Stop | ForEach-Object {
+    $l = $sh.CreateShortcut($_.FullName)
+    if ($l.TargetPath -notlike (Join-Path $app '*.bat')) { return }
+    $l.TargetPath = $node
+    $l.Arguments = '"' + (Join-Path $app 'bootstrap.js') + '" --open'
+    $l.WorkingDirectory = $app
+    $l.WindowStyle = 7
+    $ico = Join-Path $app 'kashrut.ico'
+    if (Test-Path $ico) { $l.IconLocation = "$ico,0" }
+    $l.Save()
+    Log "shortcut switched from start.bat to node: $($_.Name)"
+  }
+} catch { Log "shortcut check failed: $_" }
 # the last commit that changed anything but the receipt; receipt commits never trigger a publish
 $code = (& $git log -1 --format=%H -- . ':(exclude)last-auto-publish.txt').Trim()
 $last = if (Test-Path $marker) { (Get-Content $marker -TotalCount 1).Trim() } else { '' }
