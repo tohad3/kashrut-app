@@ -66,8 +66,11 @@ try {
     $l = $sh.CreateShortcut($_.FullName)
     $m = [regex]::Match($l.Arguments, 'launch-app\.ps1" -Dir "([^"]+)"')
     if (-not $m.Success) { return }
-    $ico = Join-Path $app ('icons\' + (Split-Path $m.Groups[1].Value -Leaf) + '.ico')
-    if (-not (Test-Path $ico) -or $l.IconLocation -eq "$ico,0") { return }
+    # a new icon gets a new file name (icons\<app>-2.ico, -3...), because Windows caches icons by path
+    $leaf = Split-Path $m.Groups[1].Value -Leaf
+    $ico = Get-ChildItem -LiteralPath (Join-Path $app 'icons') -Filter "$leaf*.ico" -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -Last 1
+    if (-not $ico -or $l.IconLocation -eq "$($ico.FullName),0") { return }
+    $ico = $ico.FullName
     $l.IconLocation = "$ico,0"
     $l.Save()
     Log "shortcut icon set: $($_.Name)"
