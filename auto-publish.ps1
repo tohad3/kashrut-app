@@ -61,6 +61,17 @@ try {
     $l.Save()
     Log "shortcut switched from start.bat to launch-app.ps1: $($_.Name)"
   }
+  # icons for those apps live here in icons\<app folder name>.ico, so a new icon reaches this PC with a push
+  Get-ChildItem -LiteralPath ([Environment]::GetFolderPath('Desktop')) -Filter *.lnk -ErrorAction Stop | ForEach-Object {
+    $l = $sh.CreateShortcut($_.FullName)
+    $m = [regex]::Match($l.Arguments, 'launch-app\.ps1" -Dir "([^"]+)"')
+    if (-not $m.Success) { return }
+    $ico = Join-Path $app ('icons\' + (Split-Path $m.Groups[1].Value -Leaf) + '.ico')
+    if (-not (Test-Path $ico) -or $l.IconLocation -eq "$ico,0") { return }
+    $l.IconLocation = "$ico,0"
+    $l.Save()
+    Log "shortcut icon set: $($_.Name)"
+  }
 } catch { Log "shortcut check failed: $_" }
 # the last commit that changed anything but the receipt; receipt commits never trigger a publish
 $code = (& $git log -1 --format=%H -- . ':(exclude)last-auto-publish.txt').Trim()
@@ -88,7 +99,7 @@ function Diag {
     Get-ChildItem -LiteralPath $d -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object {
       $l = $sh.CreateShortcut($_.FullName)
       if (($l.TargetPath + $l.Arguments) -notmatch 'kashrut|bootstrap|node|start\.') { return }
-      "$($_.FullName) | target: $($l.TargetPath) (exists: $(Test-Path -LiteralPath $l.TargetPath)) | args: $($l.Arguments) | dir: $($l.WorkingDirectory) | style: $($l.WindowStyle) | modified: $($_.LastWriteTime.ToString('yyyy-MM-dd HH:mm'))"
+      "$($_.FullName) | target: $($l.TargetPath) (exists: $(Test-Path -LiteralPath $l.TargetPath)) | args: $($l.Arguments) | dir: $($l.WorkingDirectory) | style: $($l.WindowStyle) | icon: $($l.IconLocation) | modified: $($_.LastWriteTime.ToString('yyyy-MM-dd HH:mm'))"
     }
   }
   '--- node processes ---'

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#155a87"/>
+      <stop offset="1" stop-color="#0a3352"/>
+    </linearGradient>
+    <linearGradient id="badge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f5bf2a"/>
+      <stop offset="1" stop-color="#d69400"/>
+    </linearGradient>
+    <clipPath id="ring"><circle cx="120" cy="120" r="72"/></clipPath>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+  <circle cx="120" cy="120" r="72" fill="#0d4570"/>
+  <g clip-path="url(#ring)">
+    <circle cx="120" cy="100" r="29" fill="#ffffff"/>
+    <path d="M99 82 Q120 62 141 82 Q120 76 99 82 z" fill="#12a3b4"/>
+    <path d="M58 200 c0-40 28-64 62-64 s62 24 62 64 z" fill="#ffffff"/>
+  </g>
+  <circle cx="120" cy="120" r="79" fill="none" stroke="#12a3b4" stroke-width="13"/>
+  <g transform="translate(186 182)">
+    <path d="M0 -46 L40 -30 V2 C40 28 22 43 0 52 C-22 43 -40 28 -40 2 V-30 Z" fill="url(#badge)" stroke="#0a3352" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M-17 2 L-4 15 L19 -12" fill="none" stroke="#ffffff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
