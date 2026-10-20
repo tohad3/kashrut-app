@@ -1,10 +1,10 @@
-﻿2026-10-20 10:48:04  6272d27 מחשב המועצה: קיצור הדרך שהצביע על start.bat החסום מועבר להפעלת node ישירות
+﻿2026-10-20 10:53:04  ea334f4 README: קיצור הדרך במחשב המועצה ויומן ההפעלה
 · בתיקייה המשותפת: סקריפט התקנה קיים, Node 94MB
 ✓ הקוד פורסם לתיקייה המשותפת: C:\Users\ohadt\OneDrive - מועצה דתית\אפליקציית כשרות - נתונים\_app
 ✓ הגיבוי ב-GitHub עודכן
 --- shortcuts on this PC ---
 C:\Users\ohadt\Desktop\מעקב אאוטלוק.lnk | target: C:\Users\ohadt\Documents\outlook-tracker\start.bat (exists: True) | args:  | dir: C:\Users\ohadt\Documents\outlook-tracker | style: 7 | modified: 2026-10-14 11:22
-C:\Users\ohadt\Desktop\ניהול כשרות.lnk | target: C:\Users\ohadt\Documents\kashrut-app\start.bat (exists: True) | args:  | dir: C:\Users\ohadt\Documents\kashrut-app | style: 7 | modified: 2026-10-13 15:55
+C:\Users\ohadt\Desktop\ניהול כשרות.lnk | target: C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe (exists: True) | args: "C:\Users\ohadt\Documents\kashrut-app\bootstrap.js" --open | dir: C:\Users\ohadt\Documents\kashrut-app | style: 7 | modified: 2026-10-20 10:53
 C:\Users\ohadt\Desktop\ניהול משגיחים.lnk | target: C:\Users\ohadt\Documents\mashgichim-app\start.bat (exists: True) | args:  | dir: C:\Users\ohadt\Documents\mashgichim-app | style: 1 | modified: 2026-10-13 10:50
 --- node processes ---
 6888 "C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe" server.js 
