@@ -44,6 +44,23 @@ try {
     $l.Save()
     Log "shortcut switched from start.bat to node: $($_.Name)"
   }
+  # the other local apps (mashgichim-app, outlook-tracker) start through launch-app.ps1 instead of their start.bat
+  $launcher = Join-Path $app 'launch-app.ps1'
+  Get-ChildItem -LiteralPath ([Environment]::GetFolderPath('Desktop')) -Filter *.lnk -ErrorAction Stop | ForEach-Object {
+    $l = $sh.CreateShortcut($_.FullName)
+    if ($l.TargetPath -notlike '*\start.bat' -or -not (Test-Path -LiteralPath $l.TargetPath)) { return }
+    $dir = Split-Path $l.TargetPath
+    $m = [regex]::Match((Get-Content -LiteralPath $l.TargetPath -Raw), 'localhost:(\d+)')
+    if (-not $m.Success -or -not (Test-Path (Join-Path $dir 'server.js'))) { return }
+    $l.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $l.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $launcher + '" -Dir "' + $dir + '" -Port ' + $m.Groups[1].Value
+    $l.WorkingDirectory = $dir
+    $l.WindowStyle = 7
+    $ico = Join-Path $dir 'app.ico'
+    $l.IconLocation = if (Test-Path $ico) { "$ico,0" } else { "$node,0" }
+    $l.Save()
+    Log "shortcut switched from start.bat to launch-app.ps1: $($_.Name)"
+  }
 } catch { Log "shortcut check failed: $_" }
 # the last commit that changed anything but the receipt; receipt commits never trigger a publish
 $code = (& $git log -1 --format=%H -- . ':(exclude)last-auto-publish.txt').Trim()
