@@ -52,6 +52,11 @@ try {
   }
   console.log('· בתיקייה המשותפת: התקנת מעקב אאוטלוק ' + (fs.existsSync(out) ? Math.round(fs.statSync(out).size / 1e6) + 'MB' : 'חסרה'));
 } catch (e) { console.warn('⚠ פרסום התקנת מעקב אאוטלוק נכשל: ' + e.message); }
+// גרסה ללא שרת: קובץ HTML אחד בראש התיקייה המשותפת, נפתח בלחיצה כפולה ונטען מקובצי ייצוא של שירת הים
+try {
+  const out = path.join(shared, 'ניהול כשרות - ללא שרת.html');
+  require('child_process').execFileSync(process.execPath, [path.join(HERE, 'standalone', 'build.js'), '--data', shared, '--data', path.join(HERE, 'data'), '--out', out], { stdio: 'inherit' });
+} catch (e) { console.warn('⚠ בניית הגרסה ללא שרת נכשלה: ' + e.message); }
 fs.writeFileSync(path.join(dst, 'version.txt'), new Date().toISOString() + '\n');
 console.log('✓ הקוד פורסם לתיקייה המשותפת: ' + dst);
 

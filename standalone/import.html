@@ -1,0 +1,21 @@
+<!-- טעינת נתונים (מצב ללא שרת) -->
+<section id="login" class="login hidden">
+  <form id="importForm" class="login-card">
+    <img src="icon.svg" alt="" class="login-logo">
+    <h1>ניהול כשרות</h1>
+    <p class="muted">גרסה ללא שרת. בוחרים קובצי ייצוא מ"שירת הים" (CSV או Excel): דיווחי משגיחים ו/או רשימת בתי העסק.</p>
+    <label>קבצים לטעינה<input id="importFiles" type="file" accept=".csv,.xlsx,.xls,.txt" multiple></label>
+    <button class="btn primary" type="submit">טעינה</button>
+    <p id="importStatus" class="muted hidden" role="status"></p>
+    <p id="loginError" class="error hidden" role="alert"></p>
+    <button class="btn ghost hidden" type="button" id="importContinue">המשך עם הנתונים השמורים</button>
+    <details class="fine">
+      <summary>גיבוי והעברה למחשב אחר</summary>
+      <p>הנתונים והעריכות נשמרים בדפדפן של המחשב הזה בלבד. אפשר לשמור אותם לקובץ ולטעון אותו במחשב אחר.</p>
+      <p><button class="btn ghost" type="button" id="backupSave">שמירת גיבוי לקובץ</button>
+      <label class="btn ghost">טעינת גיבוי<input id="backupLoad" type="file" accept=".json" hidden></label></p>
+      <p><button class="btn ghost" type="button" id="importClear">מחיקת הדיווחים ובתי העסק השמורים</button></p>
+    </details>
+    <p class="fine">הקבצים נקראים בדפדפן בלבד ולא נשלחים לשום מקום.</p>
+  </form>
+</section>

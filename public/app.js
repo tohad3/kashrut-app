@@ -22,7 +22,16 @@ const state = { user: null, sites: [], reports14: [], charts: {}, maps: {}, laye
 
 /* ---------- API ---------- */
 
+// במצב ללא שרת (קובץ עצמאי) הקריאות מטופלות בדפדפן עצמו – ראו local-api.js
+const LOCAL = typeof window.localApi === 'function';
+
 async function api(path, { method = 'GET', body } = {}) {
+  if (LOCAL) {
+    try { return await window.localApi(path, { method, body }); } catch (e) {
+      if (e.status === 401 && path !== '/me') showLogin();
+      throw e;
+    }
+  }
   const res = await fetch('/api' + path, {
     method,
     headers: { 'Content-Type': 'application/json', 'X-App': '1' },
@@ -52,6 +61,7 @@ function showLogin(err) {
   $('#loginError').classList.toggle('hidden', !err);
 }
 
+if (!LOCAL) {
 $('#loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
@@ -100,6 +110,7 @@ const updateCaps = (e) => {
 };
 $$('#loginForm input').forEach((el) => ['keydown', 'keyup', 'click'].forEach((ev) => el.addEventListener(ev, updateCaps)));
 $('#password').addEventListener('blur', () => $('#capsWarn').classList.add('hidden'));
+} // !LOCAL
 
 $('#logoutBtn').addEventListener('click', async () => {
   await api('/logout', { method: 'POST' }).catch(() => {});
@@ -926,9 +937,10 @@ async function checkCoords() {
     return checkCoords();
   }
   if (missing) {
-    b.innerHTML = `<span>ל-${missing} בתי עסק פעילים אין מיקום באתר "שירת הים". אפשר להוסיף מיקום מכרטיס העסק.</span><button class="btn ghost" id="loadCoords">נסה לטעון שוב</button>`;
+    b.innerHTML = LOCAL ? `<span>ל-${missing} בתי עסק פעילים אין מיקום. אפשר להוסיף מיקום מכרטיס העסק.</span>`
+      : `<span>ל-${missing} בתי עסק פעילים אין מיקום באתר "שירת הים". אפשר להוסיף מיקום מכרטיס העסק.</span><button class="btn ghost" id="loadCoords">נסה לטעון שוב</button>`;
     b.classList.remove('hidden');
-    $('#loadCoords').onclick = async () => {
+    if ($('#loadCoords')) $('#loadCoords').onclick = async () => {
       await api('/coords/refresh', { method: 'POST', body: { refetch: true } });
       checkCoords();
     };
@@ -1338,7 +1350,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet
 
 async function openSite(id) {
   const s = state.sites.find((x) => x.id === id);
-  $('#sheetContent').innerHTML = `<h2>${esc(s ? s.name : 'בית עסק')}</h2><div class="loading">טוען פרטים מהאתר…</div>`;
+  $('#sheetContent').innerHTML = `<h2>${esc(s ? s.name : 'בית עסק')}</h2><div class="loading">${LOCAL ? 'טוען פרטים…' : 'טוען פרטים מהאתר…'}</div>`;
   $('#sheet').classList.remove('hidden');
   $('#sheet').classList.remove('wide');
   state.sheet = { type: 'site', id };
@@ -1363,15 +1375,15 @@ async function openSite(id) {
       ${d.businessOpenDate ? `<dt>תאריך פתיחה</dt><dd>${fmtDate(d.businessOpenDate)}</dd>` : ''}
     </dl>` : ''}
 
-    <div class="section">
+    ${LOCAL ? '' : `<div class="section">
       <h3>תעודות כשרות</h3>
       ${d.certificates.length ? `<div class="table-wrap"><table><thead><tr><th>סוג תעודה</th><th>כשרות</th><th>רמה</th><th>שנה / תוקף</th><th>הערה</th></tr></thead><tbody>
         ${d.certificates.map((c) => `<tr><td>${esc(c.type)}</td><td>${esc(c.kosherType)}</td><td>${esc(c.level)}</td><td>${esc(c.passoverYear || fmtDate(c.validTo))}</td><td>${esc(c.remark || '')}</td></tr>`).join('')}
       </tbody></table></div>` : '<p class="muted">אין תעודות</p>'}
-    </div>
+    </div>`}
 
     ${s ? bizFormHtml(id) : ''}
-    ${isAdmin() ? `<form class="section" id="siteForm">
+    ${isAdmin() && !LOCAL ? `<form class="section" id="siteForm">
       <h3>עדכון פרטים</h3>
       <div class="form-grid">
         ${Object.entries(FIELD_LABELS).map(([k, label]) => `<label class="${k === 'Comments' || k === 'SiteDescription' ? 'full' : ''}">${label}
@@ -1389,7 +1401,7 @@ async function openSite(id) {
       <div id="miniMap" class="mini-map"></div>
       ${isAdmin() ? `<div class="row">
         <button class="btn ghost" id="myLoc" type="button">📍 המיקום הנוכחי שלי</button>
-        <button class="btn primary" id="saveLoc" type="button" disabled>שמירת מיקום באתר</button>
+        <button class="btn primary" id="saveLoc" type="button" disabled>${LOCAL ? 'שמירת מיקום' : 'שמירת מיקום באתר'}</button>
         <span class="muted" id="locText"></span>
       </div>` : ''}
     </div>`;
@@ -1442,12 +1454,12 @@ async function openSite(id) {
   });
   const saveLocBtn = $('#saveLoc');
   if (saveLocBtn) saveLocBtn.addEventListener('click', async () => {
-    if (!pending || !confirm(`לעדכן את מיקום "${d.fields.SiteName}" באתר?`)) return;
+    if (!pending || !confirm(LOCAL ? `לשמור את המיקום של "${d.fields.SiteName}"? (נשמר במחשב הזה בלבד)` : `לעדכן את מיקום "${d.fields.SiteName}" באתר?`)) return;
     saveLocBtn.disabled = true;
     try {
       await api(`/site/${id}/location`, { method: 'POST', body: { lat: pending[0], lng: pending[1] } });
       if (s) s.coord = pending;
-      toast('המיקום עודכן באתר');
+      toast(LOCAL ? 'המיקום נשמר' : 'המיקום עודכן באתר');
       renderBizMap();
     } catch (err) { toast(err.message, true); saveLocBtn.disabled = false; }
   });
@@ -2384,6 +2396,6 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) keep
 
 /* ---------- init ---------- */
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if (!LOCAL && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
 api('/me').then((r) => start(r.user)).catch(() => showLogin());
