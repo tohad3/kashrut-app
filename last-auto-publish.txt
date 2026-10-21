@@ -1,4 +1,4 @@
-﻿2026-10-21 09:28:01  50d4700 מחשב המועצה: ניהול משגיחים ומעקב אאוטלוק מופעלים עם node במקום PowerShell מוסתר, שנחסם על ידי Cortex XDR
+﻿2026-10-21 09:33:02  a442c19 launch-app.js: ניסוח
 · בתיקייה המשותפת: סקריפט התקנה קיים, Node 94MB
 ✓ הקוד פורסם לתיקייה המשותפת: C:\Users\ohadt\OneDrive - מועצה דתית\אפליקציית כשרות - נתונים\_app
 ✓ הגיבוי ב-GitHub עודכן
@@ -10,7 +10,7 @@ C:\Users\ohadt\Desktop\ניהול משגיחים.lnk | target: C:\Users\ohadt\Ap
 6888 "C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe" server.js 
 21216 "C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe" "C:\Users\ohadt\Documents\kashrut-app\bootstrap.js" --open
 15712 "C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe" server.js 
-14212 C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe C:\Users\ohadt\Documents\kashrut-app\server.js
+27128 C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe C:\Users\ohadt\Documents\kashrut-app\server.js
 port 3000: answering
 --- C:\Users\ohadt\Documents\kashrut-app\launch.log ---
 2026-10-20T08:11:51.735Z  start C:\Users\ohadt\AppData\Local\nodejs-portable\node-v24.21.0-win-x64\node.exe C:\Users\ohadt\Documents\kashrut-app\bootstrap.js --open | shared: C:\Users\ohadt\OneDrive - מועצה דתית\אפליקציית כשרות - נתונים | version: 2026-10-20T07:53:00.819Z
