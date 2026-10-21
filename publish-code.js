@@ -55,7 +55,8 @@ try {
 // גרסה ללא שרת: קובץ HTML אחד בראש התיקייה המשותפת, נפתח בלחיצה כפולה ונטען מקובצי ייצוא של שירת הים
 try {
   const out = path.join(shared, 'ניהול כשרות - ללא שרת.html');
-  require('child_process').execFileSync(process.execPath, [path.join(HERE, 'standalone', 'build.js'), '--data', shared, '--data', path.join(HERE, 'data'), '--out', out], { stdio: 'inherit' });
+  const mashgichim = path.join(path.dirname(shared), 'ניהול משגיחים - נתונים'); // מסד הנתונים של ניהול משגיחים
+  require('child_process').execFileSync(process.execPath, [path.join(HERE, 'standalone', 'build.js'), '--data', shared, '--data', path.join(HERE, 'data'), '--data', mashgichim, '--out', out], { stdio: 'inherit' });
 } catch (e) { console.warn('⚠ בניית הגרסה ללא שרת נכשלה: ' + e.message); }
 fs.writeFileSync(path.join(dst, 'version.txt'), new Date().toISOString() + '\n');
 console.log('✓ הקוד פורסם לתיקייה המשותפת: ' + dst);

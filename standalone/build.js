@@ -46,6 +46,7 @@ const SEED = {
   bizLinks: json('biz-links.json', {}),
   staffExtra: json('staff-extra.json', { people: [] }),
   staffNotes: json('staff-notes.json', {}),
+  db: json('db.json', null), // מסד הנתונים של ניהול משגיחים (עסקים ומשגיחים)
   coords: json('coords-3.json', {}),
   trails: json('trails-3.json', {}),
   maptilerKey: keyFile ? read(keyFile).trim() : '',

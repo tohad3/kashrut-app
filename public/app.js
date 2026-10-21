@@ -920,7 +920,7 @@ async function checkCoords() {
   const job = await api('/coords/status').catch(() => null);
   const b = $('#coordBanner');
   if (job && !job.done) {
-    b.innerHTML = `<span>טוען מיקומים של בתי עסק מהאתר… ${job.fetched}/${job.total}</span><div class="progress"><i style="width:${job.total ? (100 * job.fetched) / job.total : 0}%"></i></div>`;
+    b.innerHTML = `<span>${LOCAL ? 'מאתר מיקומים של בתי עסק לפי הכתובת…' : 'טוען מיקומים של בתי עסק מהאתר…'} ${job.fetched}/${job.total}</span><div class="progress"><i style="width:${job.total ? (100 * job.fetched) / job.total : 0}%"></i></div>`;
     b.classList.remove('hidden');
     clearTimeout(checkCoords.t);
     checkCoords.running = true;

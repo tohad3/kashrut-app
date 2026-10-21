@@ -39,9 +39,9 @@
   }
 
   // מצב בזיכרון: נטען פעם אחת מהדפדפן
-  const S = { reports: {}, sites: null, meta: {}, staffNotes: null, bizEdits: null, coords: {}, siteEdits: {} };
+  const S = { reports: {}, sites: null, meta: {}, staffNotes: null, bizEdits: null, coords: {}, siteEdits: {}, geo: {} };
   const ready = (async () => {
-    for (const k of ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits']) {
+    for (const k of ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo']) {
       try { const v = await get(k); if (v !== undefined) S[k] = v; } catch {}
     }
     S.staffNotes = S.staffNotes || { ...(SEED.staffNotes || {}) };
@@ -208,23 +208,99 @@
 
   const bizNorm = (v) => String(v || '').replace(/["'׳״`]/g, '').replace(/[-–—_/\\().,:;|+&]/g, ' ').replace(/\s+/g, ' ').trim();
 
-  // בלי ייצוא של בתי העסק – רשימה מינימלית מהשמות שבדיווחים, כדי שהמסכים לא יהיו ריקים
+  // מזהה מספרי קבוע (שלילי, כדי לא להתנגש במזהי שירת הים) לעסק שאין לו מזהה באתר
+  const stableId = (str) => { let h = 2166136261; for (const ch of String(str)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return -((h >>> 0) % 2e9 + 1); };
+
+  // רשימת בתי העסק: מייצוא של שירת הים אם נטען, אחרת ממסד הנתונים של "ניהול משגיחים" (לוח משגיחים).
+  // עסקים שמופיעים רק בדיווחים נוספים בסוף, כדי שכל דיווח יהיה משויך לעסק.
   function sitesList() {
     const coords = { ...(SEED.coords || {}), ...S.coords };
+    const withCoord = (x) => ({ ...x, coord: coords[x.ckey] || null });
+    let list;
     if (S.sites) {
-      return S.sites.map((x) => {
-        const e = S.siteEdits[x.id] || {};
-        return { ...x, name: e.SiteName || x.name, coord: coords[x.id > 0 ? x.id : 'n:' + x.name] || null };
+      list = S.sites.map((x) => withCoord({ ...x, name: (S.siteEdits[x.id] || {}).SiteName || x.name, ckey: x.id > 0 ? x.id : 'n:' + x.name }));
+    } else {
+      const board = boardData();
+      const names = new Map(board.staff.map((x) => [x.id, x.name]));
+      const links = SEED.bizLinks || {};
+      list = board.businesses.map((b) => {
+        const linked = links[b.id] && coords[links[b.id]];
+        const active = b.active !== false;
+        return withCoord({
+          id: links[b.id] ? Number(links[b.id]) : stableId(b.id), number: '', name: clean(b.name),
+          status: active ? 'פעיל' : 'לא פעיל', statusId: active ? 2 : 4, active,
+          type: clean(b.category), neighborhood: clean(b.cluster), city: 'חיפה',
+          street: [clean(b.address), clean(b.number)].filter(Boolean).join(' '), addressNote: clean(b.subCluster), phone: '',
+          kosherType: '', kosherLevel: '',
+          supervisors: (b.supIds || b.sups || []).map((id) => names.get(id)).filter(Boolean).join(','),
+          inspectors: clean(b.inspectorId ? names.get(b.inspectorId) : b.inspector), rabbi: '', paid: null,
+          ckey: linked ? links[b.id] : 'b:' + b.id,
+        });
       });
     }
-    const names = new Map();
-    for (const r of Object.values(S.reports)) if (r.siteName && !names.has(bizNorm(r.siteName))) names.set(bizNorm(r.siteName), r.siteName);
-    let i = 0;
-    return [...names.values()].sort((a, b) => a.localeCompare(b, 'he')).map((name) => ({
-      id: -(++i), number: '', name, status: 'מדיווחי משגיחים', statusId: 0, active: true, type: '', neighborhood: '',
-      city: '', street: '', addressNote: '', phone: '', kosherType: '', kosherLevel: '', supervisors: '', inspectors: '', rabbi: '', paid: null,
-      coord: coords['n:' + name] || null,
-    }));
+    const known = new Set(list.map((x) => bizNorm(x.name)));
+    const extra = new Map();
+    for (const r of Object.values(S.reports)) { const k = bizNorm(r.siteName); if (r.siteName && !known.has(k) && !extra.has(k)) extra.set(k, r.siteName); }
+    for (const name of [...extra.values()].sort((a, b) => a.localeCompare(b, 'he'))) {
+      list.push(withCoord({
+        id: stableId('n:' + name), number: '', name, status: 'רק בדיווחים', statusId: 0, active: true, type: '', neighborhood: '',
+        city: '', street: '', addressNote: '', phone: '', kosherType: '', kosherLevel: '', supervisors: '', inspectors: '', rabbi: '', paid: null,
+        ckey: 'n:' + name,
+      }));
+    }
+    return list;
+  }
+
+  // מסד הנתונים של "ניהול משגיחים" אם הוטמע, אחרת קובצי "לוח משגיחים"
+  function boardData() {
+    if (SEED.db && Array.isArray(SEED.db.businesses)) return { businesses: SEED.db.businesses, staff: SEED.db.staff || [] };
+    return { businesses: (SEED.bizExtra && SEED.bizExtra.businesses) || [], staff: (SEED.staffExtra && SEED.staffExtra.people) || [] };
+  }
+
+  /* ---------- geocoding ---------- */
+  // לעסקים בלי מיקום מחפשים את הכתובת (MapTiler עם המפתח של האפליקציה, ואם אין – OpenStreetMap).
+  // התוצאה נשמרת בדפדפן, כך שכל כתובת נבדקת פעם אחת בלבד.
+  const geoJob = { done: true, total: 0, fetched: 0 };
+  const inHaifa = (lat, lng) => lat > 32.68 && lat < 32.93 && lng > 34.93 && lng < 35.16;
+  async function geocode(q) {
+    const key = SEED.maptilerKey;
+    if (key && !geoJob.noMaptiler) {
+      try {
+        const r = await fetch(`https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=${encodeURIComponent(key)}&country=il&language=he&limit=1&proximity=34.99,32.79`);
+        if (r.ok) { const f = ((await r.json()).features || [])[0]; return f && f.center ? [f.center[1], f.center[0]] : null; }
+      } catch {}
+      geoJob.noMaptiler = true; // חסום ברשת הזו – ממשיכים עם OpenStreetMap
+    }
+    await new Promise((res) => setTimeout(res, 1100)); // OpenStreetMap מגביל לבקשה אחת בשנייה
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=il&q=' + encodeURIComponent(q));
+    if (!r.ok) throw new Error('חיפוש הכתובות נכשל');
+    const x = (await r.json())[0];
+    return x ? [Number(x.lat), Number(x.lon)] : null;
+  }
+  function startGeocode() {
+    if (!geoJob.done) return geoJob;
+    S.geo = S.geo || {};
+    const todo = sitesList().filter((x) => x.active && !x.coord && x.street && !(('a:' + x.street) in S.geo));
+    Object.assign(geoJob, { done: !todo.length, total: todo.length, fetched: 0, error: '' });
+    if (!todo.length) return geoJob;
+    (async () => {
+      let fails = 0;
+      try {
+        for (const x of todo) {
+          let c;
+          try { c = await geocode(`${x.street}, ${x.city || 'חיפה'}`); fails = 0; }
+          catch (e) { if (++fails >= 5) throw e; geoJob.fetched++; continue; } // כתובת שנכשלה תיבדק שוב בפעם הבאה
+          const ok = c && inHaifa(c[0], c[1]);
+          S.geo['a:' + x.street] = ok ? c : null;
+          if (ok) S.coords[x.ckey] = c;
+          geoJob.fetched++;
+          if (geoJob.fetched % 20 === 0) { save('coords'); save('geo'); }
+        }
+      } catch (e) { geoJob.error = 'חיפוש המיקומים לפי כתובת נכשל (אין חיבור לאינטרנט?)'; }
+      await Promise.all([save('coords'), save('geo')]);
+      geoJob.done = true;
+    })();
+    return geoJob;
   }
 
   function reportsIn(from, to) {
@@ -239,7 +315,9 @@
   }
 
   function staffExtra() {
-    const extra = JSON.parse(JSON.stringify(SEED.staffExtra || { people: [] }));
+    const extra = SEED.db && Array.isArray(SEED.db.staff)
+      ? { importedAt: SEED.db.createdAt, people: JSON.parse(JSON.stringify(SEED.db.staff)) }
+      : JSON.parse(JSON.stringify(SEED.staffExtra || { people: [] }));
     const notes = S.staffNotes;
     const known = new Set((extra.people || []).map((x) => x.id));
     extra.people = (extra.people || []).map((x) => ({ ...x, whatsapp: '', ...pick(notes[x.id], STAFF_FIELDS), edited: !!notes[x.id] }));
@@ -247,7 +325,7 @@
     return extra;
   }
 
-  function hasData() { return !!(S.sites || Object.keys(S.reports).length); }
+  function hasData() { return !!(S.sites || Object.keys(S.reports).length || boardData().businesses.length); }
 
   /* ---------- the API ---------- */
 
@@ -299,7 +377,10 @@
       return { ok: true, id };
     }
     if (p === '/biz-extra') {
-      const extra = JSON.parse(JSON.stringify(SEED.bizExtra || { businesses: [] }));
+      const board = boardData(), names = new Map(board.staff.map((x) => [x.id, x.name]));
+      const extra = SEED.db && Array.isArray(SEED.db.businesses)
+        ? { source: 'מסד הנתונים של ניהול משגיחים', importedAt: SEED.db.createdAt, businesses: board.businesses.map((b) => ({ ...b, inspector: names.get(b.inspectorId) || b.inspector || '', sups: b.supIds || b.sups || [] })) }
+        : JSON.parse(JSON.stringify(SEED.bizExtra || { businesses: [] }));
       extra.edits = S.bizEdits;
       extra.links = SEED.bizLinks || {};
       return extra;
@@ -315,7 +396,9 @@
       const t = SEED.trails || {};
       return { job: { done: true, total: 0, fetched: 0 }, trails: Object.fromEntries(Object.entries(t).map(([id, x]) => [id, x.rows])) };
     }
-    if (p === '/trails/refresh' || p === '/coords/refresh' || p === '/coords/status') return { done: true, total: 0, fetched: 0 };
+    if (p === '/coords/refresh' && method === 'POST') return { ...startGeocode() };
+    if (p === '/coords/status') return { ...geoJob };
+    if (p === '/trails/refresh') return { done: true, total: 0, fetched: 0 };
     if (p === '/roles') return { roles: {}, meId: USER.userId };
     if ((m = /^\/site\/([\w:-]+)$/.exec(p))) {
       const id = /^\d+$/.test(m[1]) ? Number(m[1]) : m[1];
@@ -330,10 +413,9 @@
     if ((m = /^\/site\/([\w:-]+)\/location$/.exec(p)) && method === 'POST') {
       const lat = Number(body && body.lat), lng = Number(body && body.lng);
       if (!(lat > 29 && lat < 34 && lng > 34 && lng < 36)) throw err(400, 'המיקום מחוץ לגבולות ישראל');
-      const id = m[1];
-      const s = sitesList().find((x) => String(x.id) === id);
+      const s = sitesList().find((x) => String(x.id) === m[1]);
       if (!s) throw err(404, 'בית העסק לא נמצא');
-      S.coords[s.id > 0 ? s.id : 'n:' + s.name] = [lat, lng];
+      S.coords[s.ckey] = [lat, lng];
       await save('coords');
       return { ok: true };
     }
@@ -342,7 +424,7 @@
 
   function dataLabel() {
     const n = Object.keys(S.reports).length, parts = [];
-    if (S.sites) parts.push(`${S.sites.length} בתי עסק`);
+    parts.push(S.sites ? `${S.sites.length} בתי עסק מהייצוא` : `${boardData().businesses.length} בתי עסק ממסד הנתונים`);
     if (n) parts.push(`${n.toLocaleString('he-IL')} דיווחים`);
     const at = Math.max(S.meta.reportsAt || 0, S.meta.sitesAt || 0);
     return `ללא שרת · ${parts.join(', ')}${at ? ' · נטען ' + new Date(at).toLocaleDateString('he-IL') : ''}`;
@@ -351,12 +433,12 @@
   // גיבוי ושחזור של כל מה שנשמר בדפדפן (להעברה למחשב אחר)
   async function exportBackup() {
     await ready;
-    return JSON.stringify({ kind: 'kashrut-local-backup', at: new Date().toISOString(), ...pick(S, ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits']) });
+    return JSON.stringify({ kind: 'kashrut-local-backup', at: new Date().toISOString(), ...pick(S, ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo']) });
   }
   async function importBackup(text) {
     const j = JSON.parse(text);
     if (j.kind !== 'kashrut-local-backup') throw new Error('זה לא קובץ גיבוי של האפליקציה');
-    for (const k of ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits']) if (k in j) { S[k] = j[k]; await save(k); }
+    for (const k of ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo']) if (k in j) { S[k] = j[k]; await save(k); }
   }
   async function clearReports() { await ready; S.reports = {}; S.sites = null; S.meta = {}; await Promise.all(['reports', 'sites', 'meta'].map(save)); }
 
