@@ -1,6 +1,6 @@
 // שומר רק את מעטפת האפליקציה. נתונים (/api) לעולם לא נשמרים במטמון.
-const CACHE = 'kashrut-shell-v1';
-const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/icon.svg', '/manifest.webmanifest'];
+const CACHE = 'kashrut-shell-v2';
+const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/icon.svg', '/manifest.webmanifest', '/vendor/chart.umd.min.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
