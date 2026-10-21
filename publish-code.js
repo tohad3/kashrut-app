@@ -43,6 +43,15 @@ try {
   const oldExe = path.join(shared, 'התקנת ניהול כשרות.exe');
   if (fs.existsSync(oldExe)) fs.unlinkSync(oldExe);
 } catch (e) { console.warn('⚠ פרסום קובץ ההתקנה נכשל: ' + e.message); }
+// התקנת מעקב אאוטלוק (נבנית במאגר outlook-tracker). מגיעה דרך הסנכרון של OneDrive, כי ברשת המועצה הורדת exe נחסמת
+try {
+  const src = path.join(HERE, 'installer', 'outlook-tracker-setup.exe'), out = path.join(shared, 'התקנת מעקב אאוטלוק.exe');
+  if (fs.existsSync(src) && (!fs.existsSync(out) || fs.statSync(out).size !== fs.statSync(src).size)) {
+    copyFile(src, out);
+    console.log('✓ התקנת מעקב אאוטלוק הועתקה לתיקייה המשותפת');
+  }
+  console.log('· בתיקייה המשותפת: התקנת מעקב אאוטלוק ' + (fs.existsSync(out) ? Math.round(fs.statSync(out).size / 1e6) + 'MB' : 'חסרה'));
+} catch (e) { console.warn('⚠ פרסום התקנת מעקב אאוטלוק נכשל: ' + e.message); }
 fs.writeFileSync(path.join(dst, 'version.txt'), new Date().toISOString() + '\n');
 console.log('✓ הקוד פורסם לתיקייה המשותפת: ' + dst);
 
