@@ -44,27 +44,32 @@ try {
     $l.Save()
     Log "shortcut switched from start.bat to node: $($_.Name)"
   }
-  # the other local apps (mashgichim-app, outlook-tracker) start through launch-app.ps1 instead of their start.bat
-  $launcher = Join-Path $app 'launch-app.ps1'
+  # the other local apps (mashgichim-app, outlook-tracker) start through launch-app.js with node, instead of their
+  # start.bat (blocked here) or a hidden PowerShell (blocked by the antivirus)
+  $launcher = Join-Path $app 'launch-app.js'
   Get-ChildItem -LiteralPath ([Environment]::GetFolderPath('Desktop')) -Filter *.lnk -ErrorAction Stop | ForEach-Object {
     $l = $sh.CreateShortcut($_.FullName)
-    if ($l.TargetPath -notlike '*\start.bat' -or -not (Test-Path -LiteralPath $l.TargetPath)) { return }
-    $dir = Split-Path $l.TargetPath
-    $m = [regex]::Match((Get-Content -LiteralPath $l.TargetPath -Raw), 'localhost:(\d+)')
-    if (-not $m.Success -or -not (Test-Path (Join-Path $dir 'server.js'))) { return }
-    $l.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $l.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $launcher + '" -Dir "' + $dir + '" -Port ' + $m.Groups[1].Value
+    $dir = $null; $port = $null
+    if ($l.TargetPath -like '*\start.bat' -and (Test-Path -LiteralPath $l.TargetPath)) {
+      $dir = Split-Path $l.TargetPath
+      $m = [regex]::Match((Get-Content -LiteralPath $l.TargetPath -Raw), 'localhost:(\d+)')
+      if ($m.Success) { $port = $m.Groups[1].Value }
+    } else {
+      $m = [regex]::Match($l.Arguments, 'launch-app\.ps1" -Dir "([^"]+)" -Port (\d+)')
+      if ($m.Success) { $dir = $m.Groups[1].Value; $port = $m.Groups[2].Value }
+    }
+    if (-not $dir -or -not $port -or -not (Test-Path (Join-Path $dir 'server.js'))) { return }
+    $l.TargetPath = $node
+    $l.Arguments = '"' + $launcher + '" --dir "' + $dir + '" --port ' + $port
     $l.WorkingDirectory = $dir
     $l.WindowStyle = 7
-    $ico = Join-Path $dir 'app.ico'
-    $l.IconLocation = if (Test-Path $ico) { "$ico,0" } else { "$node,0" }
     $l.Save()
-    Log "shortcut switched from start.bat to launch-app.ps1: $($_.Name)"
+    Log "shortcut switched to launch-app.js: $($_.Name)"
   }
   # icons for those apps live here in icons\<app folder name>.ico, so a new icon reaches this PC with a push
   Get-ChildItem -LiteralPath ([Environment]::GetFolderPath('Desktop')) -Filter *.lnk -ErrorAction Stop | ForEach-Object {
     $l = $sh.CreateShortcut($_.FullName)
-    $m = [regex]::Match($l.Arguments, 'launch-app\.ps1" -Dir "([^"]+)"')
+    $m = [regex]::Match($l.Arguments, 'launch-app\.js" --dir "([^"]+)"')
     if (-not $m.Success) { return }
     # a new icon gets a new file name (icons\<app>-2.ico, -3...), because Windows caches icons by path
     $leaf = Split-Path $m.Groups[1].Value -Leaf
