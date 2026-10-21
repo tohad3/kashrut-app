@@ -1,7 +1,7 @@
 // launch-app.js — מפעיל אחת מהאפליקציות המקומיות במחשב המועצה (ניהול משגיחים, מעקב אאוטלוק) ישירות עם node,
 // בלי cmd/.bat (חסומים במחשב) ובלי PowerShell מוסתר (נחסם על ידי האנטי-וירוס). קיצורי הדרך מפעילים אותו;
 // auto-publish.ps1 מכוון אותם לכאן.
-// שימוש: node launch-app.js --dir "<תיקיית האפליקציה>" --port <פורט>
+// הפעלה: node launch-app.js --dir "<תיקיית האפליקציה>" --port <פורט>
 const path = require('path');
 const http = require('http');
 const { spawn } = require('child_process');
