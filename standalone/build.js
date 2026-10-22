@@ -17,6 +17,8 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '--out') opt.out = path.resolve(args[++i]);
 }
 if (!dataDirs.length) dataDirs.push(path.join(ROOT, 'data-shared'), path.join(ROOT, 'data'));
+// מיקומי העסקים (board-coords.json) נשמרים במאגר הקוד עצמו, ולכן נמצאים תמיד
+dataDirs.push(__dirname);
 const OUT = opt.out || path.join(ROOT, 'dist', 'ניהול כשרות - ללא שרת.html');
 
 const read = (p) => fs.readFileSync(p, 'utf8');

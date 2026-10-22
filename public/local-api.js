@@ -289,9 +289,10 @@
     if (key && !geoJob.noMaptiler) {
       try {
         const r = await fetch(`https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=${encodeURIComponent(key)}&country=il&language=he&limit=1&proximity=34.99,32.79`);
-        if (r.ok) { const f = ((await r.json()).features || [])[0]; return f && f.center ? [f.center[1], f.center[0]] : null; }
-      } catch {}
-      geoJob.noMaptiler = true; // חסום ברשת הזו – ממשיכים עם OpenStreetMap
+        if (r.ok) { const f = ((await r.json()).features || [])[0]; if (f && f.center) return [f.center[1], f.center[0]]; }
+        else geoJob.noMaptiler = true;
+      } catch { geoJob.noMaptiler = true; } // חסום ברשת הזו – ממשיכים עם OpenStreetMap
+      // MapTiler לא מוצא הרבה כתובות בעברית, ולכן גם אז מנסים את OpenStreetMap
     }
     await new Promise((res) => setTimeout(res, 1100)); // OpenStreetMap מגביל לבקשה אחת בשנייה
     const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=il&q=' + encodeURIComponent(q));
