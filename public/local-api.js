@@ -39,9 +39,9 @@
   }
 
   // מצב בזיכרון: נטען פעם אחת מהדפדפן
-  const S = { reports: {}, sites: null, meta: {}, staffNotes: null, bizEdits: null, coords: {}, siteEdits: {}, geo: {} };
+  const S = { reports: {}, sites: null, meta: {}, staffNotes: null, bizEdits: null, coords: {}, siteEdits: {}, geo: {}, bizMods: {}, bizAdded: {}, bizDismissed: {}, bizAliases: {} };
   const ready = (async () => {
-    for (const k of ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo']) {
+    for (const k of ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo', 'bizMods', 'bizAdded', 'bizDismissed', 'bizAliases']) {
       try { const v = await get(k); if (v !== undefined) S[k] = v; } catch {}
     }
     S.staffNotes = S.staffNotes || { ...(SEED.staffNotes || {}) };
@@ -211,6 +211,8 @@
   // מזהה מספרי קבוע (שלילי, כדי לא להתנגש במזהי שירת הים) לעסק שאין לו מזהה באתר
   const stableId = (str) => { let h = 2166136261; for (const ch of String(str)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return -((h >>> 0) % 2e9 + 1); };
 
+  const siteIdOf = (boardId) => { const l = (SEED.bizLinks || {})[boardId]; return l ? Number(l) : stableId(boardId); };
+
   // רשימת בתי העסק: מייצוא של שירת הים אם נטען, אחרת ממסד הנתונים של "ניהול משגיחים" (לוח משגיחים).
   // עסקים שמופיעים רק בדיווחים נוספים בסוף, כדי שכל דיווח יהיה משויך לעסק.
   function sitesList() {
@@ -222,26 +224,25 @@
       list = S.sites.map((x) => withCoord({ ...x, name: (S.siteEdits[x.id] || {}).SiteName || x.name, ckey: x.id > 0 ? x.id : 'n:' + x.name }));
     } else {
       const board = boardData();
-      const names = new Map(board.staff.map((x) => [x.id, x.name]));
       const links = SEED.bizLinks || {};
       list = board.businesses.map((b) => {
         const linked = links[b.id] && coords[links[b.id]];
         const active = b.active !== false;
         return withCoord({
-          id: links[b.id] ? Number(links[b.id]) : stableId(b.id), number: '', name: clean(b.name),
+          id: siteIdOf(b.id), number: '', name: clean(b.name),
           status: active ? 'פעיל' : 'לא פעיל', statusId: active ? 2 : 4, active,
           type: clean(b.category), neighborhood: clean(b.cluster), city: 'חיפה',
           street: [clean(b.address), clean(b.number)].filter(Boolean).join(' '), addressNote: clean(b.subCluster), phone: '',
           kosherType: '', kosherLevel: '',
-          supervisors: (b.supIds || b.sups || []).map((id) => names.get(id)).filter(Boolean).join(','),
-          inspectors: clean(b.inspectorId ? names.get(b.inspectorId) : b.inspector), rabbi: '', paid: null,
-          ckey: linked ? links[b.id] : 'b:' + b.id,
+          supervisors: b.supNames.join(','), inspectors: b.inspector, rabbi: '', paid: null,
+          ckey: linked ? links[b.id] : 'b:' + b.id, boardId: b.id, added: !!b.added,
         });
       });
     }
     const known = new Set(list.map((x) => bizNorm(x.name)));
     const extra = new Map();
-    for (const r of Object.values(S.reports)) { const k = bizNorm(r.siteName); if (r.siteName && !known.has(k) && !extra.has(k)) extra.set(k, r.siteName); }
+    const key = canon();
+    for (const r of Object.values(S.reports)) { const k = key(r.siteName); if (r.siteName && !known.has(k) && !extra.has(k)) extra.set(k, r.siteName); }
     for (const name of [...extra.values()].sort((a, b) => a.localeCompare(b, 'he'))) {
       list.push(withCoord({
         id: stableId('n:' + name), number: '', name, status: 'רק בדיווחים', statusId: 0, active: true, type: '', neighborhood: '',
@@ -253,10 +254,30 @@
   }
 
   // מסד הנתונים של "ניהול משגיחים" אם הוטמע, אחרת קובצי "לוח משגיחים"
+  // העסקים מנורמלים לשדות אחידים, עם השינויים שנעשו באפליקציה (bizMods) והעסקים שנוספו בה (bizAdded)
   function boardData() {
-    if (SEED.db && Array.isArray(SEED.db.businesses)) return { businesses: SEED.db.businesses, staff: SEED.db.staff || [] };
-    return { businesses: (SEED.bizExtra && SEED.bizExtra.businesses) || [], staff: (SEED.staffExtra && SEED.staffExtra.people) || [] };
+    const fromDb = SEED.db && Array.isArray(SEED.db.businesses);
+    const raw = fromDb ? SEED.db.businesses : (SEED.bizExtra && SEED.bizExtra.businesses) || [];
+    const staff = fromDb ? SEED.db.staff || [] : (SEED.staffExtra && SEED.staffExtra.people) || [];
+    const nameOf = new Map(staff.map((x) => [x.id, x.name]));
+    const idOf = new Map(staff.map((x) => [nameKey(x.name), x.id]));
+    const norm = (b, extra) => {
+      const m = S.bizMods[b.id] || {};
+      const supNames = m.supervisors !== undefined ? splitNames(m.supervisors) : (b.supIds || b.sups || []).map((id) => nameOf.get(id)).filter(Boolean);
+      return {
+        ...b, ...pick(m, BOARD_FIELDS), ...extra,
+        inspector: clean(m.inspector !== undefined ? m.inspector : b.inspectorId ? nameOf.get(b.inspectorId) : b.inspector),
+        active: (m.active !== undefined ? m.active : b.active) !== false,
+        supNames, sups: supNames.map((n) => idOf.get(nameKey(n))).filter(Boolean),
+      };
+    };
+    const businesses = raw.map((b) => norm(b, { edited: !!S.bizMods[b.id] }));
+    for (const [id, b] of Object.entries(S.bizAdded)) businesses.push(norm({ ...b, id }, { added: true }));
+    return { businesses, staff };
   }
+  const BOARD_FIELDS = ['name', 'address', 'number', 'cluster', 'subCluster', 'route', 'category', 'notes'];
+  const nameKey = (n) => String(n || '').replace(/["'׳״.]/g, '').trim().split(/\s+/).filter((w) => w && w !== 'הרב').sort().join(' ');
+  const splitNames = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean);
 
   /* ---------- geocoding ---------- */
   // לעסקים בלי מיקום מחפשים את הכתובת (MapTiler עם המפתח של האפליקציה, ואם אין – OpenStreetMap).
@@ -304,13 +325,20 @@
     return geoJob;
   }
 
+  // שם עסק בדיווח -> מפתח השם של העסק ברשימה (כולל שמות ששויכו ידנית לעסק קיים)
+  function canon() {
+    const names = new Map(boardData().businesses.map((b) => [b.id, bizNorm(b.name)]));
+    return (name) => { const k = bizNorm(name), id = S.bizAliases[k]; return (id && names.get(id)) || k; };
+  }
+
   function reportsIn(from, to) {
     const a = new Date(from + 'T00:00:00').getTime(), b = new Date(to + 'T23:59:59').getTime();
     const sites = sitesList();
     const byName = new Map();
     for (const x of sites) { const k = bizNorm(x.name); if (!byName.has(k) || x.active) byName.set(k, x); }
+    const key = canon();
     return Object.values(S.reports).filter((r) => r.date >= a && r.date <= b).map((r) => {
-      const site = byName.get(bizNorm(r.siteName));
+      const site = byName.get(key(r.siteName));
       return { ...r, siteId: site ? site.id : null, coord: site ? site.coord : null };
     });
   }
@@ -327,6 +355,43 @@
   }
 
   function hasData() { return !!(S.sites || Object.keys(S.reports).length || boardData().businesses.length); }
+
+  /* ---------- new / dropped businesses ---------- */
+  // חדש: שם שמופיע בדיווחים (או בייצוא בתי העסק) ואין עסק כזה ברשימה.
+  // ירד: עסק פעיל ברשימה שלא היה עליו אף דיווח בימים האחרונים (או שאינו בייצוא בתי העסק, אם נטען).
+  function bizChanges(days) {
+    const board = boardData().businesses;
+    const byName = new Map(board.map((b) => [bizNorm(b.name), b]));
+    const reports = Object.values(S.reports);
+    const last = new Map(), seen = new Map();
+    let minDate = Infinity, maxDate = 0;
+    const key = canon();
+    for (const r of reports) {
+      const k = key(r.siteName);
+      if (!k) continue;
+      minDate = Math.min(minDate, r.date); maxDate = Math.max(maxDate, r.date);
+      last.set(k, Math.max(last.get(k) || 0, r.date));
+      const o = seen.get(k) || { name: r.siteName, count: 0, last: 0, supervisors: new Set() };
+      o.count++; o.last = Math.max(o.last, r.date); o.supervisors.add(r.supervisor);
+      seen.set(k, o);
+    }
+    const fresh = [...seen.entries()].filter(([k]) => !byName.has(k) && !S.bizDismissed[k])
+      .map(([, o]) => ({ name: o.name, count: o.count, last: o.last, supervisors: [...o.supervisors] }))
+      .sort((a, b) => b.last - a.last);
+    if (S.sites) for (const x of S.sites) { const k = bizNorm(x.name); if (!byName.has(k) && !seen.has(k) && !S.bizDismissed[k] && x.active) fresh.push({ name: x.name, count: 0, last: 0, supervisors: splitNames(x.supervisors), fromExport: true }); }
+    const covered = reports.length ? Math.round((maxDate - minDate) / 864e5) + 1 : 0;
+    const since = maxDate - (Math.min(days, covered) - 1) * 864e5;
+    const exportNames = S.sites && new Set(S.sites.filter((x) => x.active).map((x) => bizNorm(x.name)));
+    const silent = board.filter((b) => b.active).map((b) => {
+      const k = bizNorm(b.name), l = last.get(k) || 0;
+      const missing = exportNames && !exportNames.has(k);
+      return { id: b.id, siteId: siteIdOf(b.id), name: b.name, cluster: b.cluster, inspector: b.inspector, last: l, notInExport: !!missing, noReports: !!reports.length && l < since };
+    }).filter((x) => x.notInExport || x.noReports).sort((a, b) => b.notInExport - a.notInExport || a.last - b.last);
+    const dismissed = Object.values(S.bizDismissed);
+    return { days: Math.min(days, covered), covered, from: reports.length ? minDate : null, to: maxDate || null, fresh, silent, dismissed,
+      added: board.filter((b) => b.added).map((b) => ({ id: b.id, siteId: siteIdOf(b.id), name: b.name })),
+      inactive: board.filter((b) => !b.active).map((b) => ({ id: b.id, siteId: siteIdOf(b.id), name: b.name })) };
+  }
 
   /* ---------- the API ---------- */
 
@@ -378,10 +443,8 @@
       return { ok: true, id };
     }
     if (p === '/biz-extra') {
-      const board = boardData(), names = new Map(board.staff.map((x) => [x.id, x.name]));
-      const extra = SEED.db && Array.isArray(SEED.db.businesses)
-        ? { source: 'מסד הנתונים של ניהול משגיחים', importedAt: SEED.db.createdAt, businesses: board.businesses.map((b) => ({ ...b, inspector: names.get(b.inspectorId) || b.inspector || '', sups: b.supIds || b.sups || [] })) }
-        : JSON.parse(JSON.stringify(SEED.bizExtra || { businesses: [] }));
+      const board = boardData();
+      const extra = { source: SEED.db ? 'מסד הנתונים של ניהול משגיחים' : 'לוח משגיחים', importedAt: SEED.db ? SEED.db.createdAt : SEED.bizExtra && SEED.bizExtra.importedAt, businesses: board.businesses };
       extra.edits = S.bizEdits;
       extra.links = SEED.bizLinks || {};
       return extra;
@@ -393,6 +456,48 @@
       await save('bizEdits');
       return { ok: true };
     }
+    // ניהול רשימת העסקים: עדכון פרטים, הוספה, סימון לא פעיל
+    if ((m = /^\/biz-manage\/([\w-]{1,40})$/.exec(p)) && method === 'POST') {
+      const data = {};
+      for (const k of [...BOARD_FIELDS, 'inspector', 'supervisors']) if (body && k in body) data[k] = String(body[k] ?? '').trim().slice(0, 300);
+      if (body && 'active' in body) data.active = !!body.active;
+      let id = m[1];
+      if (id === 'new') {
+        if (!data.name) throw err(400, 'חסר שם עסק');
+        if (boardData().businesses.some((b) => bizNorm(b.name) === bizNorm(data.name))) throw err(400, 'כבר יש עסק בשם הזה');
+        id = 'a' + Date.now().toString(36);
+        S.bizAdded[id] = { active: true, ...data, addedAt: new Date().toISOString() };
+        await save('bizAdded');
+        return { ok: true, id, siteId: siteIdOf(id) };
+      }
+      if (body && body.remove) {
+        if (!S.bizAdded[id]) throw err(400, 'אפשר למחוק רק עסק שנוסף באפליקציה. עסק מהמסד מסמנים כלא פעיל');
+        delete S.bizAdded[id];
+        await save('bizAdded');
+        return { ok: true };
+      }
+      if (S.bizAdded[id]) { S.bizAdded[id] = { ...S.bizAdded[id], ...data }; await save('bizAdded'); }
+      else if (boardData().businesses.some((b) => b.id === id)) { S.bizMods[id] = { ...S.bizMods[id], ...data, updatedAt: new Date().toISOString() }; await save('bizMods'); }
+      else throw err(404, 'העסק לא נמצא');
+      return { ok: true, id };
+    }
+    // שם מהדיווחים שאינו עסק חדש (למשל שם אחר לעסק קיים) – לא יוצג שוב כחדש
+    if (p === '/biz-dismiss' && method === 'POST') {
+      const n = bizNorm(body && body.name);
+      if (!n) throw err(400, 'חסר שם');
+      if (body.undo) delete S.bizDismissed[n]; else S.bizDismissed[n] = { name: body.name, at: new Date().toISOString() };
+      await save('bizDismissed');
+      return { ok: true };
+    }
+    // שם מהדיווחים ששייך לעסק קיים ברשימה (שם אחר לאותו עסק)
+    if (p === '/biz-alias' && method === 'POST') {
+      const n = bizNorm(body && body.name), id = body && body.boardId;
+      if (!n || !boardData().businesses.some((b) => b.id === id)) throw err(400, 'יש לבחור עסק מהרשימה');
+      S.bizAliases[n] = id;
+      await save('bizAliases');
+      return { ok: true };
+    }
+    if (p === '/biz-changes') return bizChanges(Number(q.get('days')) || 30);
     if (p === '/trails') {
       const t = SEED.trails || {};
       return { job: { done: true, total: 0, fetched: 0 }, trails: Object.fromEntries(Object.entries(t).map(([id, x]) => [id, x.rows])) };
@@ -434,12 +539,12 @@
   // גיבוי ושחזור של כל מה שנשמר בדפדפן (להעברה למחשב אחר)
   async function exportBackup() {
     await ready;
-    return JSON.stringify({ kind: 'kashrut-local-backup', at: new Date().toISOString(), ...pick(S, ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo']) });
+    return JSON.stringify({ kind: 'kashrut-local-backup', at: new Date().toISOString(), ...pick(S, ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo', 'bizMods', 'bizAdded', 'bizDismissed', 'bizAliases']) });
   }
   async function importBackup(text) {
     const j = JSON.parse(text);
     if (j.kind !== 'kashrut-local-backup') throw new Error('זה לא קובץ גיבוי של האפליקציה');
-    for (const k of ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo']) if (k in j) { S[k] = j[k]; await save(k); }
+    for (const k of ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo', 'bizMods', 'bizAdded', 'bizDismissed', 'bizAliases']) if (k in j) { S[k] = j[k]; await save(k); }
   }
   async function clearReports() { await ready; S.reports = {}; S.sites = null; S.meta = {}; await Promise.all(['reports', 'sites', 'meta'].map(save)); }
 

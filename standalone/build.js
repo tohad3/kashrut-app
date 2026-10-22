@@ -83,6 +83,7 @@ swap(/<script src="vendor\/leaflet\/leaflet.js"><\/script>\s*<script src="vendor
   script(read(path.join(PUB, 'local-api.js'))),
   script(read(path.join(PUB, 'app.js'))),
   script(read(path.join(__dirname, 'import-ui.js'))),
+  script(read(path.join(__dirname, 'manage-ui.js'))),
 ].join('\n'));
 html = html.replace(/(src|href)="icon.svg"/g, (_, a) => `${a}="${icon}"`);
 html = html.replace('<title>ניהול כשרות</title>', '<title>ניהול כשרות (ללא שרת)</title>');
