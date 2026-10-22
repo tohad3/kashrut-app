@@ -214,7 +214,8 @@
   // רשימת בתי העסק: מייצוא של שירת הים אם נטען, אחרת ממסד הנתונים של "ניהול משגיחים" (לוח משגיחים).
   // עסקים שמופיעים רק בדיווחים נוספים בסוף, כדי שכל דיווח יהיה משויך לעסק.
   function sitesList() {
-    const coords = { ...(SEED.coords || {}), ...S.coords };
+    const boardCoords = Object.fromEntries(Object.entries(SEED.boardCoords || {}).map(([id, c]) => ['b:' + id, c]));
+    const coords = { ...(SEED.coords || {}), ...boardCoords, ...S.coords };
     const withCoord = (x) => ({ ...x, coord: coords[x.ckey] || null });
     let list;
     if (S.sites) {

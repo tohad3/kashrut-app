@@ -48,6 +48,7 @@ const SEED = {
   staffNotes: json('staff-notes.json', {}),
   db: json('db.json', null), // מסד הנתונים של ניהול משגיחים (עסקים ומשגיחים)
   coords: json('coords-3.json', {}),
+  boardCoords: json('board-coords.json', {}), // מיקומי העסקים של מסד הנתונים, לפי מזהה העסק בלוח
   trails: json('trails-3.json', {}),
   maptilerKey: keyFile ? read(keyFile).trim() : '',
   builtAt: new Date().toISOString(),
