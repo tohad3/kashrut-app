@@ -20,8 +20,10 @@
     $('#sheetContent').innerHTML = html;
     $('#sheet').classList.remove('hidden');
     $('#sheet').classList.add('wide');
-    state.sheet = { type: 'manage' };
+    state.sheet = { type: 'manage', n: ++sheetSeq }; // צעד בהיסטוריה, כדי שסגירה תחזור לרשימה
+    pushNav();
   };
+  let sheetSeq = 0;
   // אחרי שינוי: טוענים מחדש את העסקים ואת נתוני הלוח
   async function reload() {
     state.bizExtra = null;
@@ -40,6 +42,8 @@
     kpiRender('#manageKpis', [
       [c.fresh.length ? 'warn' : 'ok', c.fresh.length, 'עסקים חדשים (בדיווחים ולא ברשימה)', c.fresh.length ? showFresh : null],
       [c.silent.length ? 'bad' : 'ok', c.silent.length, c.silent.some((x) => x.notInExport) ? 'עסקים שירדו / בלי דיווח' : `עסקים פעילים בלי דיווח ${c.days} ימים`, c.silent.length ? showSilent : null],
+      ['ok', c.aliases.length, 'שמות מהדיווחים ששויכו לעסקים', c.aliases.length ? showAliases : null],
+      ['ok', c.supLog.length, 'עסקים שקיבלו משגיחים מהדיווחים', c.supLog.length ? showSupLog : null],
       ['', c.added.length, 'נוספו באפליקציה', c.added.length ? () => showList('עסקים שנוספו באפליקציה', c.added) : null],
       ['', c.inactive.length, 'סומנו לא פעילים', c.inactive.length ? () => showList('עסקים שסומנו לא פעילים', c.inactive) : null],
     ]);
@@ -49,13 +53,20 @@
     const rows = last.fresh;
     sheet(`<h2>עסקים חדשים</h2>
       <p class="muted">שמות שמופיעים ${rows.some((r) => r.fromExport) ? 'בדיווחים או בייצוא בתי העסק' : 'בדיווחי המשגיחים'} ואין עסק כזה ברשימה. אם זה עסק חדש – מוסיפים אותו. אם זה שם אחר של עסק קיים – מסמנים "לא חדש".</p>
-      <div class="table-wrap"><table><thead><tr><th>שם</th><th>דיווחים</th><th>דיווח אחרון</th><th>משגיחים</th><th></th></tr></thead><tbody>
+      <div class="table-wrap"><table><thead><tr><th>שם</th><th>דיווחים</th><th>דיווח אחרון</th><th>משגיחים</th><th>אולי זה</th><th></th></tr></thead><tbody>
       ${rows.map((r, i) => `<tr><td>${esc(r.name)}${r.fromExport ? ' ' + tag('מהייצוא', '') : ''}</td><td>${r.count}</td><td>${dateText(r.last)}</td><td>${plinks(r.supervisors)}</td>
+        <td>${r.suggest ? `<button class="btn ghost" data-sugg="${i}" title="שיוך הדיווחים לעסק הזה">↩ ${esc(r.suggest.name)}</button>${r.suggest.supMatch ? ' ' + tag('אותו משגיח', 'ok') : ''}` : '—'}</td>
         <td><button class="btn primary" data-add="${i}">הוספה</button> <button class="btn ghost" data-link="${i}">שיוך לעסק קיים</button> <button class="btn ghost" data-dismiss="${i}">לא חדש</button></td></tr>`).join('')}
       </tbody></table></div>
       <datalist id="mdl-board">${(state.bizBoard || []).map((b) => `<option value="${esc(b.name)}">`).join('')}</datalist>`);
     $('#sheetContent').onclick = async (e) => {
-      const a = e.target.closest('[data-add]'), d = e.target.closest('[data-dismiss]'), l = e.target.closest('[data-link]');
+      const a = e.target.closest('[data-add]'), d = e.target.closest('[data-dismiss]'), l = e.target.closest('[data-link]'), sg = e.target.closest('[data-sugg]');
+      if (sg) {
+        const r = rows[Number(sg.dataset.sugg)];
+        try { await api('/biz-alias', { method: 'POST', body: { name: r.name, boardId: r.suggest.id } }); toast(`"${r.name}" שויך ל"${r.suggest.name}"`); await reload(); showFresh(); }
+        catch (err) { toast(err.message, true); }
+        return;
+      }
       if (l) {
         const r = rows[Number(l.dataset.link)];
         const cell = l.parentElement;
@@ -96,6 +107,34 @@
       }
     };
   }
+
+  function showAliases() {
+    const rows = last.aliases;
+    sheet(`<h2>שמות מהדיווחים ששויכו לעסקים</h2>
+      <p class="muted">הדיווחים על השם שמימין נספרים לעסק שמשמאל. "אוטומטי" = שויך לפי דמיון בשם${rows.some((r) => r.supMatch) ? ' (ו"אותו משגיח" = גם המשגיח שדיווח משויך לעסק)' : ''}. שיוך שגוי מבטלים, והשם יחזור לרשימת העסקים החדשים.</p>
+      <div class="table-wrap"><table><thead><tr><th>שם בדיווחים</th><th>העסק ברשימה</th><th></th><th></th></tr></thead><tbody>
+      ${rows.map((r, i) => `<tr><td>${esc(r.name)}</td><td>${esc(r.to)}</td><td>${r.auto ? tag('אוטומטי', '') : tag('ידני', '')}${r.supMatch ? ' ' + tag('אותו משגיח', 'ok') : ''}</td>
+        <td><button class="btn ghost" data-undo="${i}">ביטול</button></td></tr>`).join('')}
+      </tbody></table></div>`);
+    $('#sheetContent').onclick = async (e) => {
+      const u = e.target.closest('[data-undo]');
+      if (!u) return;
+      const r = rows[Number(u.dataset.undo)];
+      try { await api('/biz-alias', { method: 'POST', body: { name: r.name, undo: true } }); toast('השיוך בוטל'); await reload(); showAliases(); }
+      catch (err) { toast(err.message, true); }
+    };
+  }
+
+  function showSupLog() {
+    const rows = last.supLog;
+    sheet(`<h2>משגיחים שנוספו לעסקים לפי הדיווחים</h2>
+      <p class="muted">משגיח שדיווח על עסק לפחות פעמיים ולא היה משויך אליו במסד נוסף למשגיחי העסק. אפשר לתקן בכרטיס העסק ("עדכון פרטי העסק").</p>
+      <div class="table-wrap"><table><thead><tr><th>עסק</th><th>משגיחים שנוספו</th><th>מתי</th></tr></thead><tbody>
+      ${rows.map((r) => `<tr><td><button class="plain-link" data-open="${siteOf(r.boardId)}">${esc(r.to)}</button></td><td>${plinks(r.added)}</td><td>${dateText(Date.parse(r.at))}</td></tr>`).join('')}
+      </tbody></table></div>`);
+    $('#sheetContent').onclick = (e) => { const o = e.target.closest('[data-open]'); if (o) openSite(Number(o.dataset.open)); };
+  }
+  const siteOf = (boardId) => (state.sites.find((x) => x.boardId === boardId) || {}).id;
 
   function showList(title, rows) {
     sheet(`<h2>${esc(title)}</h2><ul>${rows.map((r) => `<li><button class="plain-link" data-open="${r.siteId}">${esc(r.name)}</button></li>`).join('')}</ul>`);

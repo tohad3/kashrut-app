@@ -39,9 +39,9 @@
   }
 
   // מצב בזיכרון: נטען פעם אחת מהדפדפן
-  const S = { reports: {}, sites: null, meta: {}, staffNotes: null, bizEdits: null, coords: {}, siteEdits: {}, geo: {}, bizMods: {}, bizAdded: {}, bizDismissed: {}, bizAliases: {} };
+  const S = { reports: {}, sites: null, meta: {}, staffNotes: null, bizEdits: null, coords: {}, siteEdits: {}, geo: {}, bizMods: {}, bizAdded: {}, bizDismissed: {}, bizAliases: {}, syncLog: [], supSynced: {}, noAuto: {} };
   const ready = (async () => {
-    for (const k of ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo', 'bizMods', 'bizAdded', 'bizDismissed', 'bizAliases']) {
+    for (const k of ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo', 'bizMods', 'bizAdded', 'bizDismissed', 'bizAliases', 'syncLog', 'supSynced', 'noAuto']) {
       try { const v = await get(k); if (v !== undefined) S[k] = v; } catch {}
     }
     S.staffNotes = S.staffNotes || { ...(SEED.staffNotes || {}) };
@@ -184,6 +184,9 @@
           const ds = list.map((r) => r.date);
           summary.push(`${file.name}: ${list.length} דיווחים (${added} חדשים)${ds.length ? `, ${new Date(Math.min(...ds)).toLocaleDateString('he-IL')}–${new Date(Math.max(...ds)).toLocaleDateString('he-IL')}` : ''}`);
           S.meta.reportsAt = Date.now();
+          const log = await syncFromReports();
+          const na = log.filter((x) => x.type === 'alias').length, ns = log.filter((x) => x.type === 'supervisors').length;
+          if (na || ns) summary.push(`עודכן במסד: ${na} שמות שויכו לעסקים, ${ns} עסקים קיבלו משגיחים מהדיווחים`);
           done = true; break;
         }
         h = headerOf(rows, [SITE_COLS.name, SITE_COLS.status]);
@@ -357,6 +360,81 @@
 
   function hasData() { return !!(S.sites || Object.keys(S.reports).length || boardData().businesses.length); }
 
+  /* ---------- matching report names to businesses ---------- */
+  // דיווח על "אשכול" (קבוצת עסקים) אינו עסק
+  const isCluster = (name) => /^\s*אשכול/.test(name || '');
+  const STOP = new Set(['בעמ', 'בע', 'מ', 'חיפה', 'סניף']);
+  const words = (v) => new Set(bizNorm(v).split(' ').filter((w) => w.length > 1 && !STOP.has(w)));
+  const pairs = (v) => { const t = bizNorm(v).replace(/ /g, ''), o = new Set(); for (let i = 0; i < t.length - 1; i++) o.add(t.slice(i, i + 2)); return o; };
+  const overlap = (a, b) => { let n = 0; for (const x of a) if (b.has(x)) n++; return n; };
+
+  // העסק הקרוב ביותר לשם מהדיווח: דמיון במילים (בלי תלות בסדר) ובאותיות,
+  // ותוספת כשהמשגיח שדיווח משויך לעסק במסד הנתונים
+  function bestMatch(name, supervisors, board) {
+    const w = words(name), pr = pairs(name), sups = new Set([...supervisors].map(nameKey));
+    let best = null;
+    for (const b of board) {
+      const bw = b._w || (b._w = words(b.name)), bp = b._p || (b._p = pairs(b.name));
+      if (!w.size || !bw.size) continue;
+      const i = overlap(w, bw);
+      const byWords = (i / Math.min(w.size, bw.size)) * 0.6 + (i / (w.size + bw.size - i)) * 0.4;
+      const byLetters = overlap(pr, bp) / Math.max(1, pr.size + bp.size - overlap(pr, bp));
+      const supMatch = b.supNames.some((n) => sups.has(nameKey(n)));
+      const score = Math.max(byWords, byLetters) + (supMatch ? 0.25 : 0);
+      if (!best || score > best.score) best = { id: b.id, name: b.name, score, supMatch };
+    }
+    return best;
+  }
+  const AUTO_SCORE = 0.85, SUGGEST_SCORE = 0.55;
+
+  // עדכון המסד לפי הדיווחים: (1) שם שלא נמצא ברשימה ודומה מספיק לעסק – משויך אליו;
+  // (2) משגיח שדיווח על עסק לפחות פעמיים ואינו משויך אליו – נוסף למשגיחי העסק.
+  // כל שינוי נרשם ב-syncLog, ונעשה פעם אחת בלבד (כך שביטול ידני לא נדרס).
+  async function syncFromReports() {
+    const board = boardData().businesses;
+    const byName = new Set(board.map((b) => bizNorm(b.name)));
+    const groups = new Map();
+    for (const r of Object.values(S.reports)) {
+      const k = bizNorm(r.siteName);
+      if (!k || isCluster(r.siteName)) continue;
+      const g = groups.get(k) || { name: r.siteName, sups: new Map() };
+      g.sups.set(r.supervisor, (g.sups.get(r.supervisor) || 0) + 1);
+      groups.set(k, g);
+    }
+    const at = new Date().toISOString(), log = [];
+    for (const [k, g] of groups) {
+      if (byName.has(k) || S.bizAliases[k] || S.bizDismissed[k] || S.noAuto[k]) continue;
+      const m = bestMatch(g.name, g.sups.keys(), board);
+      if (m && m.score >= AUTO_SCORE) { S.bizAliases[k] = m.id; log.push({ type: 'alias', name: g.name, boardId: m.id, to: m.name, supMatch: m.supMatch, at }); }
+    }
+    const key = canon(), byKey = new Map(board.map((b) => [bizNorm(b.name), b]));
+    const perBiz = new Map();
+    for (const [k, g] of groups) {
+      const b = byKey.get(key(g.name));
+      if (!b) continue;
+      const o = perBiz.get(b.id) || new Map();
+      for (const [sup, n] of g.sups) o.set(sup, (o.get(sup) || 0) + n);
+      perBiz.set(b.id, o);
+    }
+    for (const b of board) {
+      const counts = perBiz.get(b.id);
+      if (!counts) continue;
+      const have = new Set(b.supNames.map(nameKey));
+      const add = [...counts].filter(([sup, n]) => n >= 2 && !have.has(nameKey(sup)) && !S.supSynced[b.id + '|' + nameKey(sup)]).map(([sup]) => sup);
+      if (!add.length) continue;
+      for (const sup of add) S.supSynced[b.id + '|' + nameKey(sup)] = at;
+      const list = [...b.supNames, ...add].join(', ');
+      if (S.bizAdded[b.id]) S.bizAdded[b.id] = { ...S.bizAdded[b.id], supervisors: list };
+      else S.bizMods[b.id] = { ...S.bizMods[b.id], supervisors: list, updatedAt: at };
+      log.push({ type: 'supervisors', boardId: b.id, to: b.name, added: add, at });
+    }
+    if (log.length) {
+      S.syncLog = [...log, ...S.syncLog].slice(0, 2000);
+      await Promise.all(['bizAliases', 'bizMods', 'bizAdded', 'supSynced', 'syncLog'].map(save));
+    }
+    return log;
+  }
+
   /* ---------- new / dropped businesses ---------- */
   // חדש: שם שמופיע בדיווחים (או בייצוא בתי העסק) ואין עסק כזה ברשימה.
   // ירד: עסק פעיל ברשימה שלא היה עליו אף דיווח בימים האחרונים (או שאינו בייצוא בתי העסק, אם נטען).
@@ -376,8 +454,11 @@
       o.count++; o.last = Math.max(o.last, r.date); o.supervisors.add(r.supervisor);
       seen.set(k, o);
     }
-    const fresh = [...seen.entries()].filter(([k]) => !byName.has(k) && !S.bizDismissed[k])
-      .map(([, o]) => ({ name: o.name, count: o.count, last: o.last, supervisors: [...o.supervisors] }))
+    const fresh = [...seen.entries()].filter(([k, o]) => !byName.has(k) && !S.bizDismissed[k] && !isCluster(o.name))
+      .map(([, o]) => {
+        const m = bestMatch(o.name, o.supervisors, board);
+        return { name: o.name, count: o.count, last: o.last, supervisors: [...o.supervisors], suggest: m && m.score >= SUGGEST_SCORE ? { id: m.id, name: m.name, supMatch: m.supMatch } : null };
+      })
       .sort((a, b) => b.last - a.last);
     if (S.sites) for (const x of S.sites) { const k = bizNorm(x.name); if (!byName.has(k) && !seen.has(k) && !S.bizDismissed[k] && x.active) fresh.push({ name: x.name, count: 0, last: 0, supervisors: splitNames(x.supervisors), fromExport: true }); }
     const covered = reports.length ? Math.round((maxDate - minDate) / 864e5) + 1 : 0;
@@ -389,7 +470,13 @@
       return { id: b.id, siteId: siteIdOf(b.id), name: b.name, cluster: b.cluster, inspector: b.inspector, last: l, notInExport: !!missing, noReports: !!reports.length && l < since };
     }).filter((x) => x.notInExport || x.noReports).sort((a, b) => b.notInExport - a.notInExport || a.last - b.last);
     const dismissed = Object.values(S.bizDismissed);
-    return { days: Math.min(days, covered), covered, from: reports.length ? minDate : null, to: maxDate || null, fresh, silent, dismissed,
+    const nameOf = new Map(board.map((b) => [b.id, b.name]));
+    const aliases = Object.entries(S.bizAliases).map(([k, id]) => {
+      const e = S.syncLog.find((x) => x.type === 'alias' && bizNorm(x.name) === k);
+      return { key: k, name: (e && e.name) || k, boardId: id, to: nameOf.get(id) || '', auto: !!e, supMatch: !!(e && e.supMatch) };
+    });
+    const supLog = S.syncLog.filter((x) => x.type === 'supervisors');
+    return { days: Math.min(days, covered), covered, from: reports.length ? minDate : null, to: maxDate || null, fresh, silent, dismissed, aliases, supLog,
       added: board.filter((b) => b.added).map((b) => ({ id: b.id, siteId: siteIdOf(b.id), name: b.name })),
       inactive: board.filter((b) => !b.active).map((b) => ({ id: b.id, siteId: siteIdOf(b.id), name: b.name })) };
   }
@@ -403,6 +490,8 @@
     const url = new URL(path, 'http://x'), p = url.pathname, q = url.searchParams;
     let m;
     if (p === '/me') {
+      // נתונים שנטענו לפני שהיה שיוך אוטומטי – משייכים פעם אחת
+      if (Object.keys(S.reports).length && !S.meta.synced) { await syncFromReports(); S.meta.synced = 1; await save('meta'); }
       let force = false;
       try { force = sessionStorage.getItem('showImport') === '1'; sessionStorage.removeItem('showImport'); } catch {}
       if (force || !hasData()) throw err(401, 'יש לטעון קובץ');
@@ -493,9 +582,10 @@
     // שם מהדיווחים ששייך לעסק קיים ברשימה (שם אחר לאותו עסק)
     if (p === '/biz-alias' && method === 'POST') {
       const n = bizNorm(body && body.name), id = body && body.boardId;
-      if (!n || !boardData().businesses.some((b) => b.id === id)) throw err(400, 'יש לבחור עסק מהרשימה');
-      S.bizAliases[n] = id;
-      await save('bizAliases');
+      if (!n || (!body.undo && !boardData().businesses.some((b) => b.id === id))) throw err(400, 'יש לבחור עסק מהרשימה');
+      if (body.undo) delete S.bizAliases[n]; else S.bizAliases[n] = id;
+      if (body.undo) S.noAuto[n] = 1; // שיוך שבוטל לא ייעשה שוב אוטומטית
+      await Promise.all([save('bizAliases'), save('noAuto')]);
       return { ok: true };
     }
     if (p === '/biz-changes') return bizChanges(Number(q.get('days')) || 30);
@@ -540,12 +630,12 @@
   // גיבוי ושחזור של כל מה שנשמר בדפדפן (להעברה למחשב אחר)
   async function exportBackup() {
     await ready;
-    return JSON.stringify({ kind: 'kashrut-local-backup', at: new Date().toISOString(), ...pick(S, ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo', 'bizMods', 'bizAdded', 'bizDismissed', 'bizAliases']) });
+    return JSON.stringify({ kind: 'kashrut-local-backup', at: new Date().toISOString(), ...pick(S, ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo', 'bizMods', 'bizAdded', 'bizDismissed', 'bizAliases', 'syncLog', 'supSynced', 'noAuto']) });
   }
   async function importBackup(text) {
     const j = JSON.parse(text);
     if (j.kind !== 'kashrut-local-backup') throw new Error('זה לא קובץ גיבוי של האפליקציה');
-    for (const k of ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo', 'bizMods', 'bizAdded', 'bizDismissed', 'bizAliases']) if (k in j) { S[k] = j[k]; await save(k); }
+    for (const k of ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo', 'bizMods', 'bizAdded', 'bizDismissed', 'bizAliases', 'syncLog', 'supSynced', 'noAuto']) if (k in j) { S[k] = j[k]; await save(k); }
   }
   async function clearReports() { await ready; S.reports = {}; S.sites = null; S.meta = {}; await Promise.all(['reports', 'sites', 'meta'].map(save)); }
 
