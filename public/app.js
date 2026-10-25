@@ -847,10 +847,38 @@ function setMapStyle(style) {
 document.addEventListener('change', (ev) => { if (ev.target.classList && ev.target.classList.contains('map-style')) setMapStyle(ev.target.value); });
 document.addEventListener('DOMContentLoaded', () => $$('.map-style').forEach((sel) => { sel.value = mapStyle(); }));
 
+// כפתור מסך מלא למפה; Esc או לחיצה נוספת מחזירים
+function addFullscreen(m) {
+  const el = m.getContainer();
+  const Ctl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd() {
+      const box = L.DomUtil.create('div', 'leaflet-bar');
+      const b = L.DomUtil.create('button', 'map-full-btn', box);
+      b.type = 'button'; b.textContent = '⛶'; b.title = 'מסך מלא'; b.setAttribute('aria-label', 'מסך מלא');
+      L.DomEvent.disableClickPropagation(box);
+      b.onclick = () => toggle();
+      this.btn = b;
+      return box;
+    },
+  });
+  const ctl = new Ctl().addTo(m);
+  const toggle = (force) => {
+    const on = force !== undefined ? force : !el.classList.contains('map-full');
+    el.classList.toggle('map-full', on);
+    document.body.classList.toggle('has-full-map', on);
+    ctl.btn.textContent = on ? '✕' : '⛶';
+    ctl.btn.title = on ? 'יציאה ממסך מלא' : 'מסך מלא';
+    setTimeout(() => m.invalidateSize(), 50);
+  };
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && el.classList.contains('map-full') && $('#sheet').classList.contains('hidden')) toggle(false); });
+}
+
 function makeMap(id) {
   if (state.maps[id]) return state.maps[id];
   const m = L.map(id, { preferCanvas: true }).setView(HAIFA, 13);
   addTiles(m);
+  if (id !== 'miniMap') addFullscreen(m);
   state.maps[id] = m;
   return m;
 }
