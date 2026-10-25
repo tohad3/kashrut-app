@@ -783,15 +783,15 @@ function fillFilters() {
 // נבדק מהרשת הזו: OSM רגילה – 11 מתוך 52 אריחים נחסמו; Wikimedia – 0 מתוך 44; Esri – 0 מתוך 52.
 // (CARTO נפסל: בלי מפתח API כל האריחים שלו הם כיתוב "API KEY REQUIRED". Israel Hiking נפסל: מפת טיולים בלי שמות רחובות.)
 // next = הסגנון שעוברים אליו אוטומטית כשהנוכחי נחסם או לא נטען.
+// שתי מפות בלבד, בלי מפתח ובלי דרישת Referer (הקובץ העצמאי נפתח מהמחשב, ואז שרתי OpenStreetMap ו-Wikimedia חוסמים אותו).
+// CARTO מציגה את השמות המקומיים מ-OpenStreetMap – בישראל בעברית. Esri היא הגיבוי.
 const TILE_STYLES = {
-  osm: { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', opts: { maxZoom: 19, attribution: '© OpenStreetMap' }, next: 'wiki' },
-  // אותם נתונים של OpenStreetMap (מתעדכנים שוטף), בעיצוב נקי ועם שמות בעברית
-  wiki: { url: 'https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png?lang=he', opts: { maxZoom: 19, attribution: '© OpenStreetMap · Wikimedia maps' }, next: 'esri' },
+  carto: { url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', opts: { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' }, next: 'esri' },
   esri: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', opts: { maxZoom: 19, maxNativeZoom: 18, attribution: 'Tiles © Esri' }, next: null },
 };
-const MAP_STYLE_KEY = 'mapStyle2';
+const MAP_STYLE_KEY = 'mapStyle3'; // מפתח חדש: בחירות קודמות (osm / wiki / maptiler) כבר לא קיימות
 const tileLayers = new Map(); // map -> שכבת האריחים שלו
-function mapStyle() { try { const v = localStorage.getItem(MAP_STYLE_KEY); return TILE_STYLES[v] ? v : 'osm'; } catch { return 'osm'; } }
+function mapStyle() { try { const v = localStorage.getItem(MAP_STYLE_KEY); return TILE_STYLES[v] ? v : 'carto'; } catch { return 'carto'; } }
 
 function addTiles(map) {
   const style = mapStyle(), def = TILE_STYLES[style];
@@ -818,25 +818,8 @@ function addTiles(map) {
   return layer.addTo(map);
 }
 
-// MapTiler: מפה מעודכנת (נתוני OpenStreetMap) עם מפתח אישי. מופעלת רק כשבשרת שמור מפתח.
-// בפעם הראשונה שמפתח מופיע בדפדפן הזה עוברים אליה; אחר כך נשמרת הבחירה של המשתמש (או מעבר אוטומטי אם נחסמה).
-async function loadMapConfig() {
-  if (loadMapConfig.done) return;
-  loadMapConfig.done = true;
-  let key = '';
-  try { key = (await api('/config')).maptilerKey || ''; } catch {}
-  if (!key) return;
-  TILE_STYLES.maptiler = {
-    url: 'https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}.png?key=' + encodeURIComponent(key),
-    opts: { maxZoom: 20, attribution: '© MapTiler © OpenStreetMap contributors' }, next: 'wiki',
-  };
-  $$('.map-style').forEach((sel) => { if (![...sel.options].some((o) => o.value === 'maptiler')) sel.insertAdjacentHTML('afterbegin', '<option value="maptiler">סגנון מפה: MapTiler</option>'); });
-  let seen = '';
-  try { seen = localStorage.getItem('maptilerSeen') || ''; } catch {}
-  const mark = key.slice(0, 6);
-  if (seen !== mark) { try { localStorage.setItem('maptilerSeen', mark); } catch {} setMapStyle('maptiler'); }
-  else $$('.map-style').forEach((sel) => { sel.value = mapStyle(); });
-}
+// MapTiler משמש רק לאיתור כתובות (במצב ללא שרת), לא כמפה
+async function loadMapConfig() {}
 
 function setMapStyle(style) {
   if (!TILE_STYLES[style]) return;
