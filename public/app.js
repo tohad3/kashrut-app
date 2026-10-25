@@ -253,6 +253,15 @@ async function start(user) {
   $('#app').classList.remove('hidden');
   let view = 'dashboard';
   try { view = localStorage.getItem('view') || view; } catch {}
+  // במצב ללא שרת: טווח התאריכים נקבע לפי הקובץ האחרון שנטען
+  if (LOCAL && window.localData && localData.lastRange) {
+    const r = await localData.lastRange().catch(() => null);
+    if (r) {
+      $('#dashFrom').value = r.from; $('#dashTo').value = r.to;
+      $('#attFrom').value = r.from; $('#attTo').value = r.to;
+      $$('#dashQuick button').forEach((b) => b.classList.remove('active'));
+    }
+  }
   nav.restoring = true; // המסך הראשון מחליף את הרשומה הנוכחית ולא מוסיף צעד
   go(view);
   nav.restoring = false;
@@ -976,8 +985,8 @@ function ensureAttMap() {
   if (!$('#attFrom').value) {
     $('#attFrom').value = isoDay(new Date());
     $('#attTo').value = isoDay(new Date());
-    if (state.user) loadAttendance();
   }
+  if (state.user && !state.attLoaded) { state.attLoaded = true; loadAttendance(); }
 }
 
 $('#attLoad').addEventListener('click', loadAttendance);

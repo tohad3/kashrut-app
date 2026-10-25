@@ -110,6 +110,7 @@
   };
 
   const inRange = (v) => clean(v) === 'דיווח בטווח';
+  const isoDate = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
   function parseReports(rows, h) {
     const c = Object.fromEntries(Object.entries(REPORT_COLS).map(([k, a]) => [k, h.idx(a)]));
@@ -181,8 +182,10 @@
           let added = 0;
           for (const r of list) { if (!S.reports[r.id]) added++; S.reports[r.id] = r; }
           await save('reports');
-          const ds = list.map((r) => r.date);
-          summary.push(`${file.name}: ${list.length} דיווחים (${added} חדשים)${ds.length ? `, ${new Date(Math.min(...ds)).toLocaleDateString('he-IL')}–${new Date(Math.max(...ds)).toLocaleDateString('he-IL')}` : ''}`);
+          const lo = list.reduce((a, r) => Math.min(a, r.date), Infinity), hi = list.reduce((a, r) => Math.max(a, r.date), 0);
+          summary.push(`${file.name}: ${list.length} דיווחים (${added} חדשים)${list.length ? `, ${new Date(lo).toLocaleDateString('he-IL')}–${new Date(hi).toLocaleDateString('he-IL')}` : ''}`);
+          // טווח התאריכים של הקובץ האחרון – ברירת המחדל של הדשבורד והנוכחות
+          if (list.length) S.meta.lastRange = { from: isoDate(lo), to: isoDate(hi) };
           S.meta.reportsAt = Date.now();
           const log = await syncFromReports();
           const na = log.filter((x) => x.type === 'alias').length, ns = log.filter((x) => x.type === 'supervisors').length;
@@ -640,5 +643,5 @@
   async function clearReports() { await ready; S.reports = {}; S.sites = null; S.meta = {}; await Promise.all(['reports', 'sites', 'meta'].map(save)); }
 
   window.localApi = localApi;
-  window.localData = { importFiles, exportBackup, importBackup, clearReports, hasData: async () => { await ready; return hasData(); }, label: async () => { await ready; return dataLabel(); } };
+  window.localData = { lastRange: async () => { await ready; return S.meta.lastRange || null; }, importFiles, exportBackup, importBackup, clearReports, hasData: async () => { await ready; return hasData(); }, label: async () => { await ready; return dataLabel(); } };
 })();
