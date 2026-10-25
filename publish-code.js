@@ -1,5 +1,8 @@
 // publish-code.js — מפרסם את קוד האפליקציה המקומי אל "<תיקייה משותפת>\_app" ב-OneDrive,
 // כדי שיתעדכן אוטומטית אצל כל המשתמשים בהפעלה הבאה. להריץ: node publish-code.js
+// הפרסום לתיקייה המשותפת ב-OneDrive הופסק לבקשת אוהד (2026-10-25). כדי להחזיר – למחוק את שתי השורות הבאות.
+console.log('· הפרסום לתיקייה המשותפת הופסק – לא נכתב דבר ל-OneDrive');
+process.exit(0);
 const fs = require('fs');
 const path = require('path');
 const HERE = __dirname;

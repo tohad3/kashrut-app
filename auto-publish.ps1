@@ -30,6 +30,9 @@ if ($local -ne $remote -and $remote -ne $base) {
 }
 # cmd/.bat are blocked on this PC, so a desktop shortcut of this app that still points at start.bat
 # is switched to run node with bootstrap.js directly (bootstrap.js keeps it up to date from then on)
+# Publishing to the shared OneDrive folder was stopped at the user's request (2026-10-25).
+# The script still pulls main, so it can be turned back on from GitHub by removing the next line.
+exit 0
 try {
   $sh = New-Object -ComObject WScript.Shell
   Get-ChildItem -LiteralPath ([Environment]::GetFolderPath('Desktop')) -Filter *.lnk -ErrorAction Stop | ForEach-Object {
