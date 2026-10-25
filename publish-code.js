@@ -1,4 +1,7 @@
 // publish-code.js — בונה את "ניהול כשרות - ללא שרת.html" אל התיקייה המשותפת ב-OneDrive. להריץ: node publish-code.js
+// הפרסום לתיקייה המשותפת ב-OneDrive הופסק לבקשת אוהד (2026-10-25). כדי להחזיר – למחוק את שתי השורות הבאות.
+console.log('· הפרסום לתיקייה המשותפת הופסק – לא נכתב דבר ל-OneDrive');
+process.exit(0);
 const fs = require('fs');
 const path = require('path');
 const HERE = __dirname;
