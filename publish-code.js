@@ -1,5 +1,4 @@
-// publish-code.js — מפרסם את קוד האפליקציה המקומי אל "<תיקייה משותפת>\_app" ב-OneDrive,
-// כדי שיתעדכן אוטומטית אצל כל המשתמשים בהפעלה הבאה. להריץ: node publish-code.js
+// publish-code.js — בונה את "ניהול כשרות - ללא שרת.html" אל התיקייה המשותפת ב-OneDrive. להריץ: node publish-code.js
 const fs = require('fs');
 const path = require('path');
 const HERE = __dirname;
@@ -20,29 +19,14 @@ function resolveSharedDir() {
 }
 
 function copyFile(src, dst) { fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.copyFileSync(src, dst + '.tmp'); fs.renameSync(dst + '.tmp', dst); }
-function copyDir(src, dst) { for (const e of fs.readdirSync(src, { withFileTypes: true })) { const s = path.join(src, e.name), d = path.join(dst, e.name); if (e.isDirectory()) copyDir(s, d); else copyFile(s, d); } }
 
 const shared = resolveSharedDir();
 if (!shared) { console.error('✗ לא נמצאה התיקייה המשותפת ב-OneDrive'); process.exit(1); }
-const dst = path.join(shared, '_app');
-copyFile(path.join(HERE, 'server.js'), path.join(dst, 'server.js'));
-copyFile(path.join(HERE, 'bootstrap.js'), path.join(dst, 'bootstrap.js'));
-if (fs.existsSync(path.join(HERE, 'kashrut.ico'))) copyFile(path.join(HERE, 'kashrut.ico'), path.join(dst, 'kashrut.ico'));
-copyDir(path.join(HERE, 'public'), path.join(dst, 'public'));
-// התקנה לעמיתים חדשים, בלי exe: סקריפט PowerShell בראש התיקייה המשותפת, ו-Node (זה שמריץ את הפרסום) ב-_app\node
-try {
-  copyFile(path.join(HERE, 'installer', 'install.ps1'), path.join(shared, 'התקנת ניהול כשרות.ps1'));
-  const nodeDst = path.join(dst, 'node', 'node.exe');
-  if (process.platform === 'win32' && (!fs.existsSync(nodeDst) || fs.statSync(nodeDst).size !== fs.statSync(process.execPath).size)) {
-    copyFile(process.execPath, nodeDst);
-    console.log('✓ Node הועתק לתיקייה המשותפת (להתקנה אצל עמיתים)');
-  }
-  const ps1 = path.join(shared, 'התקנת ניהול כשרות.ps1');
-  console.log('· בתיקייה המשותפת: סקריפט התקנה ' + (fs.existsSync(ps1) ? 'קיים' : 'חסר') + ', Node ' + (fs.existsSync(nodeDst) ? Math.round(fs.statSync(nodeDst).size / 1e6) + 'MB' : 'חסר'));
-  // קובץ ה-exe הקודם נחסם ב-SmartScreen, ולכן הוסר לטובת הסקריפט
-  const oldExe = path.join(shared, 'התקנת ניהול כשרות.exe');
-  if (fs.existsSync(oldExe)) fs.unlinkSync(oldExe);
-} catch (e) { console.warn('⚠ פרסום קובץ ההתקנה נכשל: ' + e.message); }
+// העדכון האוטומטי של גרסת השרת (_app, version.txt וסקריפטי ההתקנה) הוסר: מפרסמים רק את הקובץ ללא שרת.
+// סקריפטי ההתקנה הישנים נמחקים מהתיקייה המשותפת.
+for (const old of ['התקנת ניהול כשרות.ps1', 'התקנת-עדכון-אוטומטי.ps1', 'התקנת ניהול כשרות.exe']) {
+  try { const f = path.join(shared, old); if (fs.existsSync(f)) { fs.unlinkSync(f); console.log('✓ נמחק מהתיקייה המשותפת: ' + old); } } catch (e) { console.warn('⚠ לא הצלחתי למחוק ' + old + ': ' + e.message); }
+}
 // התקנת מעקב אאוטלוק (נבנית במאגר outlook-tracker). מגיעה דרך הסנכרון של OneDrive, כי ברשת המועצה הורדת exe נחסמת
 try {
   const src = path.join(HERE, 'installer', 'outlook-tracker-setup.exe'), out = path.join(shared, 'התקנת מעקב אאוטלוק.exe');
@@ -58,8 +42,7 @@ try {
   const mashgichim = path.join(path.dirname(shared), 'ניהול משגיחים - נתונים'); // מסד הנתונים של ניהול משגיחים
   require('child_process').execFileSync(process.execPath, [path.join(HERE, 'standalone', 'build.js'), '--data', shared, '--data', path.join(HERE, 'data'), '--data', mashgichim, '--out', out], { stdio: 'inherit' });
 } catch (e) { console.warn('⚠ בניית הגרסה ללא שרת נכשלה: ' + e.message); }
-fs.writeFileSync(path.join(dst, 'version.txt'), new Date().toISOString() + '\n');
-console.log('✓ הקוד פורסם לתיקייה המשותפת: ' + dst);
+console.log('✓ הקוד פורסם לתיקייה המשותפת: ' + shared);
 
 // גיבוי ל-GitHub: שומר גרסה ודוחף. כישלון כאן לא עוצר את הפרסום לתיקייה המשותפת.
 function gitBackup() {
