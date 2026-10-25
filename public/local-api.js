@@ -249,12 +249,16 @@
     const extra = new Map();
     const key = canon();
     for (const r of Object.values(S.reports)) { const k = key(r.siteName); if (r.siteName && !known.has(k) && !extra.has(k)) extra.set(k, r.siteName); }
+    const located = list.filter((x) => x.coord);
     for (const name of [...extra.values()].sort((a, b) => a.localeCompare(b, 'he'))) {
-      list.push(withCoord({
-        id: stableId('n:' + name), number: '', name, status: 'רק בדיווחים', statusId: 0, active: true, type: '', neighborhood: '',
+      const cluster = isCluster(name);
+      const site = withCoord({
+        id: stableId('n:' + name), number: '', name, status: cluster ? 'אשכול' : 'רק בדיווחים', statusId: 0, active: true, type: '', neighborhood: '',
         city: '', street: '', addressNote: '', phone: '', kosherType: '', kosherLevel: '', supervisors: '', inspectors: '', rabbi: '', paid: null,
         ckey: 'n:' + name,
-      }));
+      });
+      if (!site.coord && cluster) site.coord = clusterCoord(name, located);
+      list.push(site);
     }
     return list;
   }
@@ -309,7 +313,9 @@
   function startGeocode() {
     if (!geoJob.done) return geoJob;
     S.geo = S.geo || {};
-    const todo = sitesList().filter((x) => x.active && !x.coord && x.street && !(('a:' + x.street) in S.geo));
+    // עסק עם כתובת – לפי הכתובת; עסק שמופיע רק בדיווחים – לפי השם שלו
+    const qOf = (x) => (x.street ? `${x.street}, ${x.city || 'חיפה'}` : x.statusId === 0 && !isCluster(x.name) ? `${x.name}, חיפה` : '');
+    const todo = sitesList().filter((x) => x.active && !x.coord && qOf(x) && !(('a:' + (x.street || 'n:' + x.name)) in S.geo));
     Object.assign(geoJob, { done: !todo.length, total: todo.length, fetched: 0, error: '' });
     if (!todo.length) return geoJob;
     (async () => {
@@ -317,10 +323,10 @@
       try {
         for (const x of todo) {
           let c;
-          try { c = await geocode(`${x.street}, ${x.city || 'חיפה'}`); fails = 0; }
+          try { c = await geocode(qOf(x)); fails = 0; }
           catch (e) { if (++fails >= 5) throw e; geoJob.fetched++; continue; } // כתובת שנכשלה תיבדק שוב בפעם הבאה
           const ok = c && inHaifa(c[0], c[1]);
-          S.geo['a:' + x.street] = ok ? c : null;
+          S.geo['a:' + (x.street || 'n:' + x.name)] = ok ? c : null;
           if (ok) S.coords[x.ckey] = c;
           geoJob.fetched++;
           if (geoJob.fetched % 20 === 0) { save('coords'); save('geo'); }
@@ -330,6 +336,34 @@
       geoJob.done = true;
     })();
     return geoJob;
+  }
+
+  // מיקום לדיווח על "אשכול" (למשל "אשכול- גרנד קניון"): מרכז העסקים שבשמם מופיעות מילות האשכול,
+  // ואם אין כאלה – מרכז העסקים של המשגיחים שדיווחו על האשכול, כשהם קרובים זה לזה
+  function clusterCoord(name, located) {
+    const w = [...words(String(name).replace(/^\s*אשכול\s*/, ''))];
+    // מרכז הנקודות סביב החציון; נקודה רחוקה (מיקום שגוי של עסק אחד) לא מזיזה אותו
+    const near = (p, c) => Math.abs(p[0] - c[0]) < 0.006 && Math.abs(p[1] - c[1]) < 0.007; // בערך 700 מטר
+    const center = (pts) => {
+      if (!pts.length) return null;
+      const med = (i) => pts.map((p) => p[i]).sort((x, y) => x - y)[Math.floor(pts.length / 2)];
+      const m = [med(0), med(1)], ins = pts.filter((p) => near(p, m));
+      return ins.length * 2 >= pts.length ? [ins.reduce((a, c) => a + c[0], 0) / ins.length, ins.reduce((a, c) => a + c[1], 0) / ins.length] : null;
+    };
+    const spreadOk = () => true;
+    for (let n = Math.min(w.length, 3); n >= 1; n--) {
+      for (let i = 0; i + n <= w.length; i++) {
+        const part = w.slice(i, i + n);
+        if (n === 1 && part[0].length < 4) continue;
+        const hits = located.filter((x) => { const xw = words(x.name); return part.every((t) => xw.has(t)); }).map((x) => x.coord);
+        const c = center(hits);
+        if (c && spreadOk(hits, c)) return c;
+      }
+    }
+    const sups = new Set(Object.values(S.reports).filter((r) => r.siteName === name).map((r) => nameKey(r.supervisor)));
+    const mine = located.filter((x) => splitNames(x.supervisors).some((n) => sups.has(nameKey(n)))).map((x) => x.coord);
+    const c = center(mine);
+    return c && spreadOk(mine, c) ? c : null;
   }
 
   // שם עסק בדיווח -> מפתח השם של העסק ברשימה (כולל שמות ששויכו ידנית לעסק קיים)

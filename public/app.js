@@ -1074,7 +1074,7 @@ function showAttendance() {
   } else {
     pts = drawBySite(layer, list);
   }
-  if (pts.length) m.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 17 });
+  if (pts.length) m.fitBounds(L.latLngBounds(pts).pad(state.attMode === 'route' ? 0.3 : 0.15), { maxZoom: 17 }); // במסלול – מרווח לסיכות המאוחדות
 
   const ok = list.filter((x) => inRangeClass(x) === 'ok').length;
   const noLoc = list.filter((x) => !coordOf(x)).length;
@@ -1282,7 +1282,7 @@ function drawRoute(layer, list) {
   const groups = [];
   stops.forEach((x) => {
     const c = coordOf(x);
-    const g = groups.find((g) => L.latLng(g.c).distanceTo(c) < 15);
+    const g = groups.find((g) => L.latLng(g.c).distanceTo(c) < 40); // סיכות קרובות יותר מזה מסתירות זו את זו
     if (g) g.items.push(x); else groups.push({ c, items: [x] });
   });
   groups.forEach((g, i) => {
@@ -1296,7 +1296,7 @@ function drawRoute(layer, list) {
   const first = list[0], lastR = list[list.length - 1];
   $('#attLegend').innerHTML = list.length
     ? `<span><b>${esc($('#attSupervisor').value)}</b></span><span>${list.length} עצירות · ${esc(first.from)} עד ${esc(lastR.to)}</span>` + rangeLegend +
-      (stops.length < list.length ? `<span>${list.length - stops.length} עצירות בלי מיקום</span>` : '')
+      (stops.length < list.length ? `<span>בלי מיקום על המפה: ${list.filter((x) => !coordOf(x)).map((x) => `${list.indexOf(x) + 1}. ${esc(x.siteName)}`).join(' · ')}</span>` : '')
     : '<span>אין דיווחים ביום הזה</span>';
   return line;
 }
