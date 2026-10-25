@@ -783,13 +783,13 @@ function fillFilters() {
 // נבדק מהרשת הזו: OSM רגילה – 11 מתוך 52 אריחים נחסמו; Wikimedia – 0 מתוך 44; Esri – 0 מתוך 52.
 // (CARTO נפסל: בלי מפתח API כל האריחים שלו הם כיתוב "API KEY REQUIRED". Israel Hiking נפסל: מפת טיולים בלי שמות רחובות.)
 // next = הסגנון שעוברים אליו אוטומטית כשהנוכחי נחסם או לא נטען.
-// שתי מפות בלבד, בלי מפתח ובלי דרישת Referer (הקובץ העצמאי נפתח מהמחשב, ואז שרתי OpenStreetMap ו-Wikimedia חוסמים אותו).
-// CARTO מציגה את השמות המקומיים מ-OpenStreetMap – בישראל בעברית. Esri היא הגיבוי.
+// מפות בלי דרישת Referer (הקובץ העצמאי נפתח מהמחשב, ואז שרתי OpenStreetMap ו-Wikimedia חוסמים אותו).
+// CARTO ו-MapTiler (כשיש מפתח) מציגות את השמות המקומיים מ-OpenStreetMap – בישראל בעברית. Esri היא הגיבוי האחרון.
 const TILE_STYLES = {
   carto: { url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', opts: { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' }, next: 'esri' },
   esri: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', opts: { maxZoom: 19, maxNativeZoom: 18, attribution: 'Tiles © Esri' }, next: null },
 };
-const MAP_STYLE_KEY = 'mapStyle3'; // מפתח חדש: בחירות קודמות (osm / wiki / maptiler) כבר לא קיימות
+const MAP_STYLE_KEY = 'mapStyle4'; // מפתח חדש: מי שעבר אוטומטית ל-Esri ינסה שוב מפה בעברית
 const tileLayers = new Map(); // map -> שכבת האריחים שלו
 function mapStyle() { try { const v = localStorage.getItem(MAP_STYLE_KEY); return TILE_STYLES[v] ? v : 'carto'; } catch { return 'carto'; } }
 
@@ -818,8 +818,25 @@ function addTiles(map) {
   return layer.addTo(map);
 }
 
-// MapTiler משמש רק לאיתור כתובות (במצב ללא שרת), לא כמפה
-async function loadMapConfig() {}
+// מפה שנייה בעברית מ-MapTiler, כשיש מפתח: אם CARTO חסומה ברשת עוברים אליה, ורק אחריה ל-Esri
+async function loadMapConfig() {
+  if (loadMapConfig.done) return;
+  loadMapConfig.done = true;
+  let key = '';
+  try { key = (await api('/config')).maptilerKey || ''; } catch {}
+  if (!key) return;
+  TILE_STYLES.maptiler = {
+    url: 'https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}.png?key=' + encodeURIComponent(key),
+    opts: { maxZoom: 20, attribution: '© MapTiler © OpenStreetMap contributors' }, next: 'esri',
+  };
+  TILE_STYLES.carto.next = 'maptiler';
+  $$('.map-style').forEach((sel) => {
+    if (![...sel.options].some((o) => o.value === 'maptiler')) sel.querySelector('option[value="esri"]').insertAdjacentHTML('beforebegin', '<option value="maptiler">סגנון מפה: עברית (MapTiler)</option>');
+    sel.value = mapStyle();
+  });
+  // מי שבחר MapTiler לפני שהמפתח נטען – מקבל אותה עכשיו
+  try { if (localStorage.getItem(MAP_STYLE_KEY) === 'maptiler') setMapStyle('maptiler'); } catch {}
+}
 
 function setMapStyle(style) {
   if (!TILE_STYLES[style]) return;
