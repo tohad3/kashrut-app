@@ -25,6 +25,7 @@
       const summary = await localData.importFiles(files);
       status('נטען: ' + summary.join(' · '));
       // אחרי טעינה מציגים את הנתונים מחדש (המטמון של app.js מתאפס בטעינת הדף)
+      try { sessionStorage.setItem('afterImport', '1'); } catch {} // אחרי הטעינה תוצג חלונית עם העסקים החדשים
       setTimeout(() => location.reload(), 900);
     } catch (err) { status(err.message, true); }
     finally { btn.disabled = false; }

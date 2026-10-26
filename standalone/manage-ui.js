@@ -205,4 +205,93 @@
   go = function (view) { baseGo(view); if (view === 'sites') renderManage(); };
   const baseRender = renderSiteList;
   renderSiteList = function () { baseRender(); renderManage(); };
+
+  /* ---------- התראה: עסקים בלי ביקורת ובלי החתמות בתקופה שנבחרה ---------- */
+  const AL_KEY = 'bizAlert';
+  const alCfg = { n: 14, unit: 'd', kind: 'both' };
+  try { Object.assign(alCfg, JSON.parse(localStorage.getItem(AL_KEY) || '{}')); } catch {}
+  const KIND_TEXT = { both: 'בלי ביקורת וגם בלי החתמות', insp: 'בלי ביקורת', sign: 'בלי החתמות' };
+  const alCard = document.createElement('div');
+  alCard.className = 'card';
+  alCard.id = 'alertCard';
+  alCard.style.margin = '0 0 16px';
+  alCard.innerHTML = `<h3>⚠ התראה: עסקים בלי ביקורת ובלי החתמות</h3>
+    <div class="toolbar">
+      <label>תקופה<input id="alN" type="number" min="1" max="365" style="width:90px"></label>
+      <label>יחידה<select id="alUnit"><option value="d">ימים</option><option value="w">שבועות</option></select></label>
+      <label>להתריע על עסקים<select id="alKind"><option value="both">${KIND_TEXT.both}</option><option value="insp">${KIND_TEXT.insp}</option><option value="sign">${KIND_TEXT.sign}</option></select></label>
+    </div>
+    <p class="muted" id="alNote"></p>
+    <div class="kpis small" id="alKpis"></div>`;
+  $('#kpis').after(alCard);
+  $('#alN').value = alCfg.n; $('#alUnit').value = alCfg.unit; $('#alKind').value = alCfg.kind;
+  alCard.addEventListener('change', () => {
+    alCfg.n = Math.min(365, Math.max(1, Number($('#alN').value) || 1)); alCfg.unit = $('#alUnit').value; alCfg.kind = $('#alKind').value;
+    try { localStorage.setItem(AL_KEY, JSON.stringify(alCfg)); } catch {}
+    renderAlert();
+  });
+  const dm = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7);
+  const periodText = () => `${alCfg.n} ${alCfg.unit === 'w' ? 'שבועות' : 'ימים'}`;
+
+  // ביקורת = דיווח של מפקח (לפי התפקיד בקובץ, או מפקח שרשום על העסק). החתמה = דיווח של משגיח.
+  // התקופה נספרת אחורה מהיום האחרון שבקובץ, לא מהיום.
+  async function alertRows() {
+    const range = await localData.lastRange();
+    if (!range || !state.siteById) return null;
+    const days = alCfg.n * (alCfg.unit === 'w' ? 7 : 1);
+    const d = new Date(range.to + 'T12:00:00'); d.setDate(d.getDate() - days + 1);
+    const from = isoDay(d), to = range.to;
+    const insp = new Set(), sign = new Set();
+    for (const r of await api(`/reports?from=${from}&to=${to}`)) {
+      const site = state.siteById.get(r.siteId);
+      if (!site) continue;
+      const isInsp = /מפקח/.test(r.group || '') || splitNames(site.inspectors).some((n) => nameKey(n) === nameKey(r.supervisor));
+      (isInsp ? insp : sign).add(r.siteId);
+    }
+    const hit = (x) => (alCfg.kind === 'insp' ? !insp.has(x.id) : alCfg.kind === 'sign' ? !sign.has(x.id) : !insp.has(x.id) && !sign.has(x.id));
+    const list = state.sites.filter((x) => x.active && x.statusId !== 0 && hit(x));
+    return { from, to, partial: from < range.from, dataFrom: range.from, list };
+  }
+  const alertTitle = (a) => `עסקים ${KIND_TEXT[alCfg.kind]} ב-${periodText()} (${dm(a.from)}–${dm(a.to)})`;
+
+  let alSeq = 0;
+  async function renderAlert() {
+    const seq = ++alSeq;
+    let a;
+    try { a = await alertRows(); } catch (e) { $('#alNote').textContent = e.message; return; }
+    if (seq !== alSeq) return;
+    if (!a) { $('#alNote').textContent = 'טוענים קובץ דיווחים כדי לקבל התראות.'; $('#alKpis').innerHTML = ''; return; }
+    $('#alNote').textContent = `עסקים פעילים שלא היה עליהם דיווח ב-${periodText()} האחרונים שבקובץ (${dm(a.from)}–${dm(a.to)}).` +
+      (a.partial ? ` שים לב: הקובץ מתחיל רק ב-${dm(a.dataFrom)}, ולכן חלק מהתקופה לא נבדק.` : '');
+    kpiRender('#alKpis', [[a.list.length ? 'bad' : 'ok', a.list.length, alertTitle(a), a.list.length ? () => openDrill(alertTitle(a), 'sites', a.list) : null]]);
+  }
+
+  // חלונית אחרי טעינת קובץ: עסקים חדשים שזוהו, וההתראה על עסקים בלי ביקורת והחתמות
+  async function importPopup() {
+    let c, a;
+    try { c = await api(`/biz-changes?days=${DAYS}`); a = await alertRows(); } catch { return; }
+    last = c;
+    if (!c.fresh.length && !(a && a.list.length)) return;
+    const MAX = 15;
+    sheet(`<h2>סיכום טעינת הקובץ</h2>
+      ${c.fresh.length ? `<h3>🆕 זוהו ${c.fresh.length} עסקים חדשים</h3>
+        <p class="muted">שמות שמופיעים בקובץ ואינם ברשימת העסקים (שמות שדומים מספיק לעסק קיים שויכו אליו אוטומטית).</p>
+        <ul>${c.fresh.slice(0, MAX).map((r) => `<li>${esc(r.name)}${r.count ? ` <span class="muted">(${r.count} דיווחים)</span>` : ''}</li>`).join('')}</ul>
+        ${c.fresh.length > MAX ? `<p class="muted">ועוד ${c.fresh.length - MAX}…</p>` : ''}
+        <p><button class="btn primary" type="button" id="popFresh">טיפול בעסקים החדשים</button></p>` : '<p>לא זוהו עסקים חדשים.</p>'}
+      ${a && a.list.length ? `<h3>⚠ ${a.list.length} ${alertTitle(a)}</h3>
+        <p><button class="btn ghost" type="button" id="popAlert">הצגת הרשימה</button> <span class="muted">את התקופה משנים בדשבורד.</span></p>` : ''}`);
+    const f = $('#popFresh'), al = $('#popAlert');
+    if (f) f.addEventListener('click', showFresh);
+    if (al) al.addEventListener('click', () => openDrill(alertTitle(a), 'sites', a.list));
+  }
+
+  const baseDash = renderDashboard;
+  renderDashboard = function () {
+    baseDash();
+    renderAlert();
+    let pop = false;
+    try { pop = sessionStorage.getItem('afterImport') === '1'; sessionStorage.removeItem('afterImport'); } catch {}
+    if (pop) importPopup();
+  };
 })();
