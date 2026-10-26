@@ -972,7 +972,9 @@ function renderBizMap() {
   }
   layer.addTo(m);
   state.layers.biz = layer;
-  if (list.length && (q || !renderBizMap.fitted)) { m.fitBounds(L.latLngBounds(list.map((x) => x.coord)).pad(0.1)); renderBizMap.fitted = true; }
+  // מפה מוסתרת היא בגודל אפס, והתאמה אליה מגדילה עד הסוף (ונוחתת על הים) – מתאימים רק כשהיא גלויה
+  m.invalidateSize();
+  if (list.length && (q || !renderBizMap.fitted) && m.getSize().x > 0) { m.fitBounds(L.latLngBounds(list.map((x) => x.coord)).pad(0.1), { maxZoom: 16 }); renderBizMap.fitted = true; }
   if (byInsp) {
     const n = new Map();
     for (const x of list) { const k = siteInspector(x, insp); n.set(k, (n.get(k) || 0) + 1); }

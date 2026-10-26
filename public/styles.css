@@ -125,7 +125,7 @@ main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 .toolbar > * { flex: 1 1 160px; }
 .toolbar > .btn { flex: 0 0 auto; }
 
-.map { height: max(480px, calc(100dvh - 190px)); border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 10px; z-index: 0; }
+.map { height: max(560px, calc(100dvh - 120px)); border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 10px; z-index: 0; }
 /* מפה במסך מלא (מתחת לחלוניות ולהודעות, מעל הכותרת) */
 .map.map-full { position: fixed !important; inset: 0; height: 100dvh; width: 100vw; z-index: 1500; border-radius: 0; margin: 0; border: 0; }
 body.has-full-map { overflow: hidden; }
