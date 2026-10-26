@@ -221,6 +221,21 @@
 
   // רשימת בתי העסק: מייצוא של שירת הים אם נטען, אחרת ממסד הנתונים של "ניהול משגיחים" (לוח משגיחים).
   // עסקים שמופיעים רק בדיווחים נוספים בסוף, כדי שכל דיווח יהיה משויך לעסק.
+  // התאמה בין עסקי הייצוא לעסקי מסד הנתונים; מחושבת פעם אחת לכל ייצוא
+  let exportMatch = null;
+  function exportBoardMatch() {
+    if (exportMatch && exportMatch.src === S.sites) return exportMatch.map;
+    const map = new Map(), board = boardData().businesses;
+    const rev = new Map(Object.entries(SEED.bizLinks || {}).map(([bid, sid]) => [Number(sid), bid]));
+    const byName = new Map(board.map((b) => [bizNorm(b.name), b.id]));
+    for (const x of S.sites) {
+      let bid = rev.get(Number(x.id)) || byName.get(bizNorm(x.name));
+      if (!bid) { const m = bestMatch(x.name, splitNames(x.supervisors), board); if (m && m.score >= AUTO_SCORE) bid = m.id; }
+      if (bid) map.set(x.id, bid);
+    }
+    exportMatch = { src: S.sites, map };
+    return map;
+  }
   function sitesList() {
     const boardCoords = Object.fromEntries(Object.entries(SEED.boardCoords || {}).map(([id, c]) => ['b:' + id, c]));
     const coords = { ...(SEED.coords || {}), ...boardCoords, ...S.coords };
@@ -228,6 +243,9 @@
     let list;
     if (S.sites) {
       list = S.sites.map((x) => withCoord({ ...x, name: (S.siteEdits[x.id] || {}).SiteName || x.name, ckey: x.id > 0 ? x.id : 'n:' + x.name }));
+      // עסק מהייצוא בלי מיקום מקבל את המיקום של העסק המתאים במסד הנתונים (לפי קישור קיים, או לפי דמיון בשם)
+      const boardOf = exportBoardMatch();
+      for (const x of list) if (!x.coord) { const bid = boardOf.get(x.id); if (bid && coords['b:' + bid]) x.coord = coords['b:' + bid]; }
     } else {
       const board = boardData();
       const links = SEED.bizLinks || {};
