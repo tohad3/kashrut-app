@@ -1475,7 +1475,11 @@ async function openSite(id) {
       <h3>מיקום על המפה</h3>
       <p class="muted">${isAdmin() ? (d.coord ? 'גרור את הסמן או לחץ על המפה כדי לשנות מיקום.' : 'אין מיקום. לחץ על המפה כדי לקבוע מיקום.') : 'לצפייה בלבד.'}</p>
       <div id="miniMap" class="mini-map"></div>
-      ${isAdmin() ? `<div class="row">
+      ${isAdmin() ? `<form class="row" id="addrForm">
+        <input id="addrQuery" type="text" placeholder="כתובת, למשל: הרצל 10, חיפה" value="${esc([d.address && [d.address.street, d.address.house].filter(Boolean).join(' '), d.address && d.address.city].filter(Boolean).join(', '))}" style="flex:1;min-width:200px">
+        <button class="btn ghost" type="submit">🔎 חיפוש לפי כתובת</button>
+      </form>
+      <div class="row">
         <button class="btn ghost" id="myLoc" type="button">📍 המיקום הנוכחי שלי</button>
         <button class="btn primary" id="saveLoc" type="button" disabled>${LOCAL ? 'שמירת מיקום' : 'שמירת מיקום באתר'}</button>
         <span class="muted" id="locText"></span>
@@ -1528,6 +1532,21 @@ async function openSite(id) {
       (p) => { const ll = L.latLng(p.coords.latitude, p.coords.longitude); mini.setView(ll, 18); setPending(ll); },
       () => toast('לא התקבלה הרשאת מיקום', true), { enableHighAccuracy: true, timeout: 15000 });
   });
+  const addrForm = $('#addrForm');
+  if (addrForm) addrForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    let q = $('#addrQuery').value.trim();
+    if (!q) return toast('צריך להקליד כתובת', true);
+    if (!/חיפה|טירת|נשר|קריית|קרית/.test(q)) q += ', חיפה';
+    const btn = $('button[type=submit]', addrForm); btn.disabled = true;
+    try {
+      const c = await findAddress(q);
+      if (!c) return toast('הכתובת לא נמצאה. אפשר לנסות ניסוח אחר, או ללחוץ על המפה.', true);
+      const ll = L.latLng(c[0], c[1]); mini.setView(ll, 18); setPending(ll);
+      toast('נמצא מיקום – בדוק שהסמן במקום הנכון ולחץ "שמירת מיקום"');
+    } catch (err) { toast(err.message, true); }
+    finally { btn.disabled = false; }
+  });
   const saveLocBtn = $('#saveLoc');
   if (saveLocBtn) saveLocBtn.addEventListener('click', async () => {
     if (!pending || !confirm(LOCAL ? `לשמור את המיקום של "${d.fields.SiteName}"? (נשמר במחשב הזה בלבד)` : `לעדכן את מיקום "${d.fields.SiteName}" באתר?`)) return;
@@ -1541,6 +1560,15 @@ async function openSite(id) {
   });
 }
 window.openSite = openSite;
+
+// חיפוש מיקום לפי כתובת: במצב ללא שרת – דרך MapTiler / OpenStreetMap של הקובץ, ובשרת – OpenStreetMap ישירות
+async function findAddress(q) {
+  if (LOCAL) return (await api('/geocode?q=' + encodeURIComponent(q))).coord;
+  const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=il&q=' + encodeURIComponent(q));
+  if (!r.ok) throw new Error('חיפוש הכתובת נכשל');
+  const x = (await r.json())[0];
+  return x ? [Number(x.lat), Number(x.lon)] : null;
+}
 
 /* ---------- active / inactive status as registered on the site ---------- */
 

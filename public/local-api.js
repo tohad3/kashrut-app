@@ -537,6 +537,12 @@
     if (p === '/logout') { try { sessionStorage.setItem('showImport', '1'); } catch {} return { ok: true }; }
     if (p === '/ping') return { ok: true };
     if (p === '/home') return [];
+    if (p === '/geocode') {
+      const qq = (q.get('q') || '').trim();
+      if (!qq) throw err(400, 'חסרה כתובת');
+      const c = await geocode(qq);
+      return { coord: c && c[0] > 29 && c[0] < 34 && c[1] > 34 && c[1] < 36 ? c : null };
+    }
     if (p === '/config') return { maptilerKey: /^[A-Za-z0-9_-]{8,80}$/.test(SEED.maptilerKey || '') ? SEED.maptilerKey : '' };
     if (p === '/sites') return sitesList();
     if (p === '/reports') return reportsIn(q.get('from'), q.get('to'));
