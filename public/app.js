@@ -465,6 +465,28 @@ function renderDashboard() {
   const silent = assigned.filter((n) => !reporters.has(n));
   const repPct = assigned.length ? Math.round((100 * (assigned.length - silent.length)) / assigned.length) : 0;
 
+  // אחוזי החתמה מתוך כלל המשגיחים (כל העסקים במערכת, בלי תלות בבחירת הסטטוסים)
+  const repKeys = new Set(state.reports14.map((x) => nameKey(x.supervisor)));
+  const allSup = [...new Map(state.sites.filter((x) => !DASH_HIDDEN_STATUSES.has(x.statusId)).flatMap((x) => splitNames(x.supervisors)).map((n) => [nameKey(n), n])).values()].sort((p, q) => p.localeCompare(q, 'he'));
+  const allSigned = allSup.filter((n) => repKeys.has(nameKey(n)));
+  // פטורים: יש להם טלפון כשר והצהרה, והם גם לא מחתימים בפועל
+  const exempt = allSup.filter((n) => !repKeys.has(nameKey(n)) && staffOf(n)?.phone === 'kosher' && staffOf(n)?.declaration);
+  const pctOf = (n, d) => (d ? Math.round((100 * n) / d) : 0);
+  const allPct = pctOf(allSigned.length, allSup.length), netBase = allSup.length - exempt.length, netPct = pctOf(allSigned.length, netBase);
+  const pctCls = (v, d) => (!d ? '' : v >= 80 ? 'ok' : v >= 50 ? 'warn' : 'bad');
+
+  // נוכחות יומית: כמה משגיחים דיווחו ביום מסוים מעסק שהם משויכים אליו
+  const presentByDay = new Map();
+  for (const x of state.reports14) {
+    if (!x.date) continue;
+    const site = state.siteById && state.siteById.get(x.siteId);
+    if (!site || !splitNames(site.supervisors).some((n) => nameKey(n) === nameKey(x.supervisor))) continue;
+    const d = isoDay(new Date(x.date));
+    (presentByDay.get(d) || presentByDay.set(d, new Map()).get(d)).set(nameKey(x.supervisor), x.supervisor);
+  }
+  const lastDay = [...presentByDay.keys()].sort().pop();
+  const lastPresent = lastDay ? [...presentByDay.get(lastDay).values()] : [];
+
   // תמיד מתוך כל העסקים המאושרים לתעודה, בלי תלות בבחירת הסטטוסים שלמעלה
   const approvedAll = state.sites.filter((x) => x.statusId === 2), unpaidApproved = approvedAll.filter((x) => x.paid === false);
   const allSelected = picked.size === allStatusIds().length;
@@ -476,8 +498,11 @@ function renderDashboard() {
     ['', s.filter((x) => x.statusId === 1).length, 'בתהליך פתיחה', () => openDrill('בתהליך פתיחה', 'sites', s.filter((x) => x.statusId === 1))],
     ['', r.length, merged ? `דיווחים בתקופה (אוחדו ${merged} כפולים)` : 'דיווחים בתקופה', () => openDrill('דיווחים בתקופה', 'reports', r)],
     ['', new Set(r.map((x) => x.supervisor)).size, `${roleWord(role)} שדיווחו`, () => openDrill(`${roleWord(role, ' ו')} שדיווחו`, 'people', [...new Set(r.map((x) => x.supervisor))])],
-    [!assigned.length ? '' : repPct >= 80 ? 'ok' : repPct >= 50 ? 'warn' : 'bad', assigned.length ? repPct + '%' : '–',
-      `משגיחים משויכים שדיווחו (${assigned.length - silent.length} מתוך ${assigned.length})`, () => openDrill('משגיחים משויכים', 'people', assigned)],
+    [pctCls(allPct, allSup.length), allSup.length ? allPct + '%' : '–',
+      `החתמה – כלל המשגיחים (${allSigned.length} מתוך ${allSup.length})`, () => openDrill('משגיחים שלא החתימו', 'people', allSup.filter((n) => !repKeys.has(nameKey(n))))],
+    [pctCls(netPct, netBase), netBase ? netPct + '%' : '–',
+      `החתמה – בלי בעלי טלפון כשר והצהרה שלא מחתימים (${allSigned.length} מתוך ${netBase}; ${exempt.length} לא נספרו)`, () => openDrill('לא נספרו: טלפון כשר והצהרה, ולא מחתימים', 'people', exempt)],
+    ['', lastPresent.length, lastDay ? `משגיחים שנכחו בעסקים שלהם ב-${lastDay.slice(8, 10)}/${lastDay.slice(5, 7)}` : 'משגיחים שנכחו בעסקים שלהם', lastPresent.length ? () => openDrill(`נכחו בעסקים שלהם ${lastDay.slice(8, 10)}/${lastDay.slice(5, 7)}`, 'people', lastPresent) : null],
     [okPct >= 80 ? 'ok' : okPct >= 50 ? 'warn' : 'bad', okPct + '%', 'דיווחים בטווח', () => openDrill('דיווחים שאינם "כניסה ויציאה בטווח"', 'reports', r.filter((x) => inRangeClass(x) !== 'ok'))],
     [unpaidApproved.length ? 'bad' : 'ok', unpaidApproved.length, `מאושרים לתעודה שלא שילמו (מתוך ${approvedAll.length})`, () => openDrill('מאושרים לתעודה שלא שילמו', 'sites', unpaidApproved)],
     [noCoord ? 'warn' : 'ok', noCoord, 'פעילים ללא מיקום ידוע', () => openDrill('פעילים ללא מיקום', 'sites', s.filter((x) => x.active && !x.coord))],
@@ -528,6 +553,19 @@ function renderDashboard() {
     const cls = ['ok', 'partial', 'bad'][ds];
     openDrill(`דיווחים · ${bucketLabel(buckets[i])} · ${RANGE_LABELS[cls]}`, 'reports',
       r.filter((x) => x.date && bucketOf(isoDay(new Date(x.date))) === buckets[i] && inRangeClass(x) === cls));
+  });
+
+  // משגיחים שנכחו בעסקים שלהם: לפי יום, או ממוצע יומי לשבוע / חודש
+  const presDays = (bk) => days.filter((d) => bucketOf(d) === bk);
+  const presVal = (bk) => { const ds = presDays(bk); const v = ds.reduce((n, d) => n + (presentByDay.get(d)?.size || 0), 0); return unit === 'day' ? v : Math.round((10 * v) / (ds.length || 1)) / 10; };
+  chart('chPresent', {
+    type: 'bar',
+    data: { labels: buckets.map(bucketLabel), datasets: [{ label: unit === 'day' ? 'משגיחים' : 'ממוצע משגיחים ליום', data: buckets.map(presVal), backgroundColor: '#0b3a5b' }] },
+    options: { plugins: { legend: { display: false } }, maintainAspectRatio: false },
+  }, (i) => {
+    const names = new Map();
+    for (const d of presDays(buckets[i])) for (const [k, n] of presentByDay.get(d) || []) names.set(k, n);
+    openDrill(`נכחו בעסקים שלהם · ${bucketLabel(buckets[i])}`, 'people', [...names.values()]);
   });
 
   const byField = (title, pairs, get) => (i) => openDrill(title + ': ' + pairs[i][0], 'sites', active.filter((x) => (get(x) || 'לא צוין') === pairs[i][0]));
