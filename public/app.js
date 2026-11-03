@@ -577,13 +577,14 @@ function renderDashboard() {
   const sup = new Map();
   for (const x of r) {
     const k = x.supervisor || 'לא ידוע';
-    const o = sup.get(k) || { name: k, group: x.group, n: 0, ok: 0, sites: new Set(), mins: 0 };
+    const o = sup.get(k) || { name: k, group: x.group, n: 0, ok: 0, sites: new Set(), reps: [] };
     o.n++; if (inRangeClass(x) === 'ok') o.ok++; o.sites.add(x.siteName);
-    o.mins += durMin(x);
+    o.reps.push(x);
     sup.set(k, o);
   }
+  for (const o of sup.values()) o.mins = netMins(o.reps);
   const rows = [...sup.values()].sort((a, b) => b.n - a.n);
-  $('#supTable').innerHTML = '<thead><tr><th>שם</th><th>תפקיד</th><th>דיווחים</th><th>בתי עסק</th><th>שעות</th><th>% בטווח</th></tr></thead><tbody>' +
+  $('#supTable').innerHTML = '<thead><tr><th>שם</th><th>תפקיד</th><th>דיווחים</th><th>בתי עסק</th><th title="שעות חופפות בכמה עסקים נספרות פעם אחת">שעות (בלי חפיפות)</th><th>% בטווח</th></tr></thead><tbody>' +
     rows.map((o) => {
       const pct = Math.round((100 * o.ok) / o.n);
       return `<tr><td>${plink(o.name)}</td><td>${esc(o.group)}</td><td class="num">${o.n}</td><td class="num">${o.sites.size}</td><td class="num">${(o.mins / 60).toFixed(1)}</td><td class="num" style="color:var(--${pct >= 80 ? 'ok' : pct >= 50 ? 'warn' : 'bad'})">${pct}%</td></tr>`;
@@ -1059,6 +1060,14 @@ function ensureAttMap() {
 }
 
 $('#attLoad').addEventListener('click', loadAttendance);
+// מעבר יום קודם / הבא: מזיז את התאריכים ביום אחד וטוען מחדש
+const shiftAttDay = (n) => {
+  const mv = (v) => { const d = new Date((v || isoDay(new Date())) + 'T12:00:00'); d.setDate(d.getDate() + n); return isoDay(d); };
+  $('#attFrom').value = mv($('#attFrom').value); $('#attTo').value = mv($('#attTo').value || $('#attFrom').value);
+  loadAttendance();
+};
+$('#attPrev').addEventListener('click', () => shiftAttDay(-1));
+$('#attNext').addEventListener('click', () => shiftAttDay(1));
 $('#attRole').addEventListener('change', () => { fillAttFilters(); showAttendance(); });
 $('#attInspector').addEventListener('change', () => { fillAttFilters(); showAttendance(); });
 $('#attSupervisor').addEventListener('change', () => { fillAttDays(); showAttendance(); });
@@ -1147,7 +1156,7 @@ function showAttendance() {
 
   const ok = list.filter((x) => inRangeClass(x) === 'ok').length;
   const noLoc = list.filter((x) => !coordOf(x)).length;
-  const mins = list.reduce((s, x) => s + durMin(x), 0);
+  const mins = netMins(list), grossMins = list.reduce((s, x) => s + durMin(x), 0);
   const roleLbl = roleWord(sv('#attRole').length === 1 ? sv('#attRole')[0] : '');
   const sitesOf = (rows) => (state.siteById ? [...new Set(rows.map((x) => x.siteId).filter(Boolean))].map((id) => state.siteById.get(id)).filter(Boolean) : []);
   const peopleOf = (rows) => [...new Set(rows.map((x) => x.supervisor).filter(Boolean))];
@@ -1156,7 +1165,7 @@ function showAttendance() {
     ['', list.length, 'דיווחים', list.length ? () => openDrill('דיווחים', 'reports', list) : null],
     ['', peopleOf(list).length, roleLbl, peopleOf(list).length ? () => openDrill(roleLbl, 'people', peopleOf(list)) : null],
     ['', sitesOf(list).length, 'בתי עסק', sitesOf(list).length ? () => openDrill('בתי עסק', 'sites', sitesOf(list)) : null],
-    ['', (mins / 60).toFixed(1), 'שעות מדווחות', list.length ? () => openDrill('דיווחים (לפי שעות)', 'reports', list) : null],
+    ['', (mins / 60).toFixed(1), grossMins > mins ? `שעות נטו (${((grossMins - mins) / 60).toFixed(1)} חופפות לא נספרו)` : 'שעות מדווחות', list.length ? () => openDrill('דיווחים (לפי שעות)', 'reports', list) : null],
     [list.length && ok / list.length >= 0.8 ? 'ok' : 'warn', list.length ? Math.round((100 * ok) / list.length) + '%' : '–', 'בטווח', ok ? () => openDrill('דיווחים בטווח', 'reports', list.filter((x) => inRangeClass(x) === 'ok')) : null],
     [noLoc ? 'warn' : '', noLoc, 'בלי מיקום על המפה', noLoc ? () => openDrill('דיווחים בלי מיקום', 'reports', list.filter((x) => !coordOf(x))) : null],
   ]);
@@ -1171,6 +1180,25 @@ const RANGE_LABELS = { ok: 'כניסה ויציאה בטווח', partial: 'חל�
 const RANGE_ORDER = { ok: 0, partial: 1, bad: 2 };
 // משך בדקות; 0 כשחסרה שעת כניסה או יציאה
 const durMin = (x) => { const f = toMin(x.from), t = toMin(x.to); return f !== null && t !== null && t > f ? t - f : 0; };
+// סך דקות בלי חפיפות: אצל אותו אדם באותו יום, זמנים שחופפים בין כמה עסקים נספרים פעם אחת
+const netMins = (list) => {
+  const by = new Map();
+  for (const x of list) {
+    const f = toMin(x.from), t = toMin(x.to);
+    if (f === null || t === null || t <= f) continue;
+    const d = x.date instanceof Date ? isoDay(x.date) : String(x.date);
+    const k = nameKey(x.supervisor || '') + '|' + d;
+    (by.get(k) || by.set(k, []).get(k)).push([f, t]);
+  }
+  let sum = 0;
+  for (const iv of by.values()) {
+    iv.sort((a, b) => a[0] - b[0]);
+    let [cf, ct] = iv[0];
+    for (const [f, t] of iv.slice(1)) { if (f <= ct) ct = Math.max(ct, t); else { sum += ct - cf; [cf, ct] = [f, t]; } }
+    sum += ct - cf;
+  }
+  return sum;
+};
 const ATT_COLS = [
   ['range', 'מצב', (x) => RANGE_ORDER[inRangeClass(x)]],
   ['date', 'תאריך', (x) => (x.date || 0) + (toMin(x.from) || 0) * 60000],
@@ -1618,9 +1646,10 @@ function buildPeople(activeOnly) {
     const k = nameKey(r.supervisor);
     // מי שדיווח ואינו משויך לעסק: לפי התפקיד שבדיווח
     const o = insp.get(k) || sup.get(k) || get(/מפקח/.test(r.group || '') ? insp : sup, r.supervisor);
-    o.n++; if (inRangeClass(r) === 'ok') o.ok++; o.mins += durMin(r); o.group = r.group || o.group;
-    if (insp.has(k) && sup.has(k)) { const o2 = sup.get(k); o2.n++; if (inRangeClass(r) === 'ok') o2.ok++; o2.mins += durMin(r); }
+    o.n++; if (inRangeClass(r) === 'ok') o.ok++; (o.reps || (o.reps = [])).push(r); o.group = r.group || o.group;
+    if (insp.has(k) && sup.has(k)) { const o2 = sup.get(k); o2.n++; if (inRangeClass(r) === 'ok') o2.ok++; (o2.reps || (o2.reps = [])).push(r); }
   }
+  for (const o of [...sup.values(), ...insp.values()]) if (o.reps) o.mins = netMins(o.reps);
   for (const p of (state.staff ? state.staff.values() : [])) if (!sup.has(nameKey(p.name)) && !insp.has(nameKey(p.name))) get(sup, p.name);
   // משגיחים שרשומים באתר ואינם משויכים לעסק (רובם לא פעילים) – כדי שאפשר יהיה לסנן ולראות גם אותם
   for (const [k, v] of (state.siteStatus || [])) if (v.role === 'משגיח' && !sup.has(k) && !insp.has(k)) get(sup, v.name);
@@ -1723,7 +1752,7 @@ function openPerson(name) {
   const p = staffOf(name), l = lastOf(name) || [...(state.lastReports ? state.lastReports.byName.values() : [])].find((x) => nameKey(x.name) === key);
   const roles = [asInsp.length ? 'מפקח' : '', asSup.length ? 'משגיח' : ''].filter(Boolean).join(' · ') || (reps[0] && reps[0].group) || 'לא משויך לעסק';
   const ok = reps.filter((r) => inRangeClass(r) === 'ok').length;
-  const mins = reps.reduce((s, r) => s + durMin(r), 0);
+  const mins = netMins(reps), grossMins = reps.reduce((s, r) => s + durMin(r), 0);
   const range = rangeText($('#dashFrom').value, $('#dashTo').value);
   const act = (list) => list.filter((x) => x.active);
   const siteBtns = (list) => `<div class="site-links">${list.map((x) => `<button data-site-open="${x.id}" title="${esc(x.status)}"${x.active ? '' : ' style="opacity:.6"'}>${esc(x.name)}</button>`).join('')}</div>`;
@@ -1757,7 +1786,7 @@ function openPerson(name) {
     <div class="kpis small section">
       <div class="kpi"><b>${reps.length}</b><span>דיווחים בתקופה</span></div>
       <div class="kpi ${reps.length ? (ok / reps.length >= 0.8 ? 'ok' : 'warn') : ''}"><b>${reps.length ? Math.round((100 * ok) / reps.length) + '%' : '–'}</b><span>בטווח</span></div>
-      <div class="kpi"><b>${(mins / 60).toFixed(1)}</b><span>שעות מדווחות</span></div>
+      <div class="kpi"><b>${(mins / 60).toFixed(1)}</b><span>${grossMins > mins ? `שעות נטו (${((grossMins - mins) / 60).toFixed(1)} חופפות לא נספרו)` : 'שעות מדווחות'}</span></div>
       <div class="kpi"><b>${new Set(reps.map((r) => r.siteName)).size}</b><span>עסקים שביקר</span></div>
     </div>
     <p class="muted">התקופה: ${esc(range)} (נבחרת בדשבורד)</p>
