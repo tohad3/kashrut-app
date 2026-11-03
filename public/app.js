@@ -1100,11 +1100,13 @@ const repInspectors = (x) => splitNames((state.siteById && state.siteById.get(x.
 
 function fillAttFilters() {
   const all = state.attReports || [];
-  fillSelect($('#attRole'), [...new Set(all.map((x) => x.group).filter(Boolean))].sort());
+  // בחירה קיימת נשמרת גם כשאין לה דיווחים בתאריכים החדשים (למשל בדפדוף בין ימים)
+  const keep = (sel, vals) => [...new Set([...vals, ...sv(sel)])];
+  fillSelect($('#attRole'), keep('#attRole', all.map((x) => x.group).filter(Boolean)).sort());
   const roles = sv('#attRole');
-  fillSelect($('#attInspector'), [...new Set(all.flatMap(repInspectors))].sort((a, b) => a.localeCompare(b, 'he')));
+  fillSelect($('#attInspector'), keep('#attInspector', all.flatMap(repInspectors)).sort((a, b) => a.localeCompare(b, 'he')));
   const insp = sv('#attInspector');
-  fillSelect($('#attSupervisor'), [...new Set(all.filter((x) => anyOf(roles, x.group) && (!insp.length || repInspectors(x).some((n) => insp.includes(n)))).map((x) => x.supervisor).filter(Boolean))].sort());
+  fillSelect($('#attSupervisor'), keep('#attSupervisor', all.filter((x) => anyOf(roles, x.group) && (!insp.length || repInspectors(x).some((n) => insp.includes(n)))).map((x) => x.supervisor).filter(Boolean)).sort());
   fillAttDays();
 }
 
