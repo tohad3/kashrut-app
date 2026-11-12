@@ -1174,10 +1174,45 @@ function showAttendance() {
     ['', (mins / 60).toFixed(1), grossMins > mins ? `שעות נטו (${((grossMins - mins) / 60).toFixed(1)} חופפות לא נספרו)` : 'שעות מדווחות', list.length ? () => openDrill('דיווחים (לפי שעות)', 'reports', list) : null],
     [list.length && ok / list.length >= 0.8 ? 'ok' : 'warn', list.length ? Math.round((100 * ok) / list.length) + '%' : '–', 'בטווח', ok ? () => openDrill('דיווחים בטווח', 'reports', list.filter((x) => inRangeClass(x) === 'ok')) : null],
     [noLoc ? 'warn' : '', noLoc, 'בלי מיקום על המפה', noLoc ? () => openDrill('דיווחים בלי מיקום', 'reports', list.filter((x) => !coordOf(x))) : null],
+    ...attInspectorKpis(sv('#attInspector')),
   ]);
 
   renderAttTable(list);
   pushNav();
+}
+
+// נתוני מפקח: כשנבחר מפקח בסינון – המשגיחים והעסקים שמשויכים אליו (לפי רשימת העסקים),
+// כמה מהם החתימו / ביקרו בתאריכים שנבחרו (כל הדיווחים בתקופה, בלי תלות בשאר הסינונים)
+function attInspectorKpis(insp) {
+  if (!insp.length) return [];
+  const who = insp.length === 1 ? insp[0] : `${insp.length} מפקחים`;
+  const sites = state.sites.filter((x) => !DASH_HIDDEN_STATUSES.has(x.statusId) && splitNames(x.inspectors).some((n) => insp.includes(n)));
+  const sups = [...new Map(sites.flatMap((x) => splitNames(x.supervisors)).map((n) => [nameKey(n), n])).values()].sort((a, b) => a.localeCompare(b, 'he'));
+  const all = state.attReports || [];
+  const repKeys = new Set(all.map((x) => nameKey(x.supervisor)));
+  const kosher = (n) => staffOf(n)?.phone === 'kosher';
+  const withDecl = sups.filter((n) => kosher(n) && staffOf(n)?.declaration);
+  const noDecl = sups.filter((n) => kosher(n) && !staffOf(n)?.declaration);
+  // באחוזי ההחתמה לא נספרים בעלי טלפון כשר והצהרת עו"ד
+  const base = sups.filter((n) => !withDecl.includes(n));
+  const signed = base.filter((n) => repKeys.has(nameKey(n)));
+  const unsigned = base.filter((n) => !repKeys.has(nameKey(n)));
+  const visitedIds = new Set(all.map((x) => x.siteId).filter(Boolean));
+  const visited = sites.filter((x) => visitedIds.has(x.id)), notVisited = sites.filter((x) => !visitedIds.has(x.id));
+  const pct = (n, d) => (d ? Math.round((100 * n) / d) : 0);
+  const cls = (v, d) => (!d ? '' : v >= 80 ? 'ok' : v >= 50 ? 'warn' : 'bad');
+  const sp = pct(signed.length, base.length), vp = pct(visited.length, sites.length);
+  return [
+    [cls(sp, base.length), base.length ? sp + '%' : '–',
+      `משגיחים של ${who} שהחתימו: ${signed.length} מתוך ${base.length} (בלי טלפון כשר והצהרת עו"ד)`,
+      base.length ? () => openDrill(`משגיחים של ${who} שלא החתימו`, 'people', unsigned) : null],
+    ['', withDecl.length, `טלפון כשר עם הצהרת עו"ד (מתוך ${sups.length} משגיחים)`,
+      withDecl.length ? () => openDrill('טלפון כשר עם הצהרת עו"ד', 'people', withDecl) : null],
+    [noDecl.length ? 'warn' : '', noDecl.length, 'טלפון כשר בלי הצהרת עו"ד',
+      noDecl.length ? () => openDrill('טלפון כשר בלי הצהרת עו"ד', 'people', noDecl) : null],
+    [cls(vp, sites.length), `${visited.length}/${sites.length}`, `בתי עסק של ${who} שהיו בהם ביקורים (${vp}%)`,
+      notVisited.length ? () => openDrill(`בתי עסק של ${who} בלי ביקור`, 'sites', notVisited) : visited.length ? () => openDrill('בתי עסק עם ביקור', 'sites', visited) : null],
+  ];
 }
 
 /* --- reports table: sorting + row popup --- */
