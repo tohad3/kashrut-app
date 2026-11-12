@@ -60,7 +60,7 @@ function doGet(e) {
   touchUser_(u);
   const t = HtmlService.createTemplateFromFile('Index');
   // נתונים שמוטמעים בתוך תגית script: בלי "</" ובלי מפרידי שורות של JS
-  const inline = s => s.replace(/</g, '\\u003c').replace(/ /g, '\\u2028').replace(/ /g, '\\u2029');
+  const inline = s => s.replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   t.boot = inline(JSON.stringify({ token: tok, uid: u.uid, name: u.name, email: u.email, admin: u.admin, url: appUrl_() }));
   t.seed = inline(readFile_('seed') || '{}');
   t.lib = HtmlService.createTemplateFromFile('Lib').getRawContent();
