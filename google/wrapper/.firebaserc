@@ -1,4 +1,1 @@
-{
-  "projects": { "default": "kashrut-haifa" },
-  "targets": { "kashrut-haifa": { "hosting": { "manage": ["kashrut-haifa-manage"] } } }
-}
+{ "projects": { "default": "kashrut-nochechut" } }
