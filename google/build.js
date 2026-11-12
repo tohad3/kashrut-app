@@ -22,7 +22,8 @@ for (let i = 0; i < args.length; i++) {
 }
 dataDirs.push(SA); // board-coords.json
 
-const read = (p) => fs.readFileSync(p, 'utf8');
+// קבצים שנשמרו ב-Windows (CRLF) – מנרמלים ל-LF כדי שההחלפות בטקסט יימצאו
+const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
 const dataUri = (p, type) => `data:${type};base64,${fs.readFileSync(p).toString('base64')}`;
 
 /* ---------- מאגר העסקים (Seed.gs) ---------- */
