@@ -29,11 +29,15 @@
     });
     return dbp;
   }
+  // גרסת Google (google/): window.LOCAL_BACKEND שומר את הנתונים בחשבון Google במקום בדפדפן
+  const BE = window.LOCAL_BACKEND || null;
   async function get(key) {
+    if (BE) return BE.get(key);
     const d = await db();
     return new Promise((res, rej) => { const q = d.transaction(STORE).objectStore(STORE).get(key); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
   }
   async function put(key, val) {
+    if (BE) return BE.put(key, val);
     const d = await db();
     return new Promise((res, rej) => { const t = d.transaction(STORE, 'readwrite'); t.objectStore(STORE).put(val, key); t.oncomplete = () => res(); t.onerror = () => rej(t.error); });
   }
@@ -313,6 +317,7 @@
   const geoJob = { done: true, total: 0, fetched: 0 };
   const inHaifa = (lat, lng) => lat > 32.68 && lat < 32.93 && lng > 34.93 && lng < 35.16;
   async function geocode(q) {
+    if (BE && BE.geocode) return BE.geocode(q);
     const key = SEED.maptilerKey;
     if (key && !geoJob.noMaptiler) {
       try {
@@ -709,6 +714,9 @@
     for (const k of ['reports', 'sites', 'meta', 'staffNotes', 'bizEdits', 'coords', 'siteEdits', 'geo', 'bizMods', 'bizAdded', 'bizDismissed', 'bizAliases', 'syncLog', 'supSynced', 'noAuto']) if (k in j) { S[k] = j[k]; await save(k); }
   }
   async function clearReports() { await ready; S.reports = {}; S.sites = null; S.meta = {}; await Promise.all(['reports', 'sites', 'meta'].map(save)); }
+
+  // עדכון שהגיע ממשתמש אחר (גרסת Google): מחליף את הערך בזיכרון
+  if (BE) BE.onRemote = (k, v) => { if (k in S) S[k] = v; };
 
   window.localApi = localApi;
   window.localData = { lastRange: async () => { await ready; return S.meta.lastRange || null; }, importFiles, exportBackup, importBackup, clearReports, hasData: async () => { await ready; return hasData(); }, label: async () => { await ready; return dataLabel(); } };
