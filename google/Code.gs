@@ -8,7 +8,7 @@
  */
 
 // הכתובת שהמשתתפים מקבלים. ריק = כתובת הפריסה של Google. אחרי הקמת דף עוטף ב-Firebase – לכתוב כאן את הכתובת שלו
-const PUBLIC_URL = '';
+const PUBLIC_URL = 'https://kashrut-haifa-manage.web.app/';
 const appUrl_ = () => PUBLIC_URL || ScriptApp.getService().getUrl();
 const APP_NAME = 'ניהול כשרות – מחלקת הכשרות';
 const MAIL_NAME = 'מחלקת הכשרות – המועצה הדתית חיפה';
