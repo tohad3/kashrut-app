@@ -322,11 +322,21 @@
       } catch { geoJob.noMaptiler = true; } // חסום ברשת הזו – ממשיכים עם OpenStreetMap
       // MapTiler לא מוצא הרבה כתובות בעברית, ולכן גם אז מנסים את OpenStreetMap
     }
-    await new Promise((res) => setTimeout(res, 1100)); // OpenStreetMap מגביל לבקשה אחת בשנייה
-    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=il&q=' + encodeURIComponent(q));
+    // OpenStreetMap (Nominatim) חוסם לפעמים בקשות מקובץ שנפתח מהמחשב (בלי כתובת אתר), ואז עוברים ל-Photon,
+    // שמבוסס על אותם נתונים. השירות שנכשל לא נוסה שוב עד סוף החיפוש הנוכחי.
+    if (!geoJob.noNominatim) {
+      await new Promise((res) => setTimeout(res, 1100)); // OpenStreetMap מגביל לבקשה אחת בשנייה
+      try {
+        const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=il&q=' + encodeURIComponent(q));
+        if (r.ok) { const x = (await r.json())[0]; return x ? [Number(x.lat), Number(x.lon)] : null; }
+        geoJob.noNominatim = true;
+      } catch { geoJob.noNominatim = true; }
+    }
+    const r = await fetch('https://photon.komoot.io/api/?limit=1&lat=32.79&lon=34.99&q=' + encodeURIComponent(q));
     if (!r.ok) throw new Error('חיפוש הכתובות נכשל');
-    const x = (await r.json())[0];
-    return x ? [Number(x.lat), Number(x.lon)] : null;
+    const f = ((await r.json()).features || [])[0];
+    const c = f && f.geometry && f.geometry.coordinates;
+    return c ? [Number(c[1]), Number(c[0])] : null;
   }
   function startGeocode() {
     if (!geoJob.done) return geoJob;
@@ -334,7 +344,7 @@
     // עסק עם כתובת – לפי הכתובת; עסק שמופיע רק בדיווחים – לפי השם שלו
     const qOf = (x) => (x.street ? `${x.street}, ${x.city || 'חיפה'}` : x.statusId === 0 && !isCluster(x.name) ? `${x.name}, חיפה` : '');
     const todo = sitesList().filter((x) => x.active && !x.coord && qOf(x) && !(('a:' + (x.street || 'n:' + x.name)) in S.geo));
-    Object.assign(geoJob, { done: !todo.length, total: todo.length, fetched: 0, error: '' });
+    Object.assign(geoJob, { done: !todo.length, total: todo.length, fetched: 0, error: '', noNominatim: false });
     if (!todo.length) return geoJob;
     (async () => {
       let fails = 0;
@@ -349,7 +359,7 @@
           geoJob.fetched++;
           if (geoJob.fetched % 20 === 0) { save('coords'); save('geo'); }
         }
-      } catch (e) { geoJob.error = 'חיפוש המיקומים לפי כתובת נכשל (אין חיבור לאינטרנט?)'; }
+      } catch (e) { geoJob.error = 'לא הצלחנו להתחבר לשירות איתור הכתובות (ייתכן שהאינטרנט או סינון הרשת חוסמים אותו)'; }
       await Promise.all([save('coords'), save('geo')]);
       geoJob.done = true;
     })();

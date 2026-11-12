@@ -1012,14 +1012,18 @@ async function checkCoords() {
     indexSites();
     renderDashboard(); renderBizMap(); renderSiteList();
     if (state.attReports && !$('#view-attendance').classList.contains('hidden')) showAttendance();
-    if (job.error) toast(job.error, true);
+    // שגיאה מוצגת בפס המיקומים ולא כהודעה אדומה: החיפוש רץ לבד ברקע, והמשתמש לא ביקש אותו
+    checkCoords.error = job.error || '';
+    if (job.error && checkCoords.manual) toast(job.error, true);
+    checkCoords.manual = false;
     return checkCoords();
   }
   if (missing) {
-    b.innerHTML = LOCAL ? `<span>ל-${missing} בתי עסק פעילים אין מיקום. אפשר להוסיף מיקום מכרטיס העסק.</span>`
+    b.innerHTML = LOCAL ? `<span>ל-${missing} בתי עסק פעילים אין מיקום.${checkCoords.error ? ' ' + esc(checkCoords.error) + '.' : ''} אפשר להוסיף מיקום מכרטיס העסק.</span>${checkCoords.error ? '<button class="btn ghost" id="loadCoords">נסה לאתר שוב</button>' : ''}`
       : `<span>ל-${missing} בתי עסק פעילים אין מיקום באתר "שירת הים". אפשר להוסיף מיקום מכרטיס העסק.</span><button class="btn ghost" id="loadCoords">נסה לטעון שוב</button>`;
     b.classList.remove('hidden');
     if ($('#loadCoords')) $('#loadCoords').onclick = async () => {
+      checkCoords.manual = true;
       await api('/coords/refresh', { method: 'POST', body: { refetch: true } });
       checkCoords();
     };
