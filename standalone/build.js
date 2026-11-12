@@ -24,7 +24,8 @@ const OUT = opt.out || path.join(ROOT, 'dist', 'ניהול כשרות - ללא �
 const read = (p) => fs.readFileSync(p, 'utf8');
 const dataUri = (p, type) => `data:${type};base64,${fs.readFileSync(p).toString('base64')}`;
 // תוכן שמוטמע בתוך תגית script לא יכול להכיל "</script"
-const safe = (s) => s.replace(/<\/(script)/gi, '<\\/$1');
+// וגם תו U+FFFD (בטבלאות של ספריית Excel) נכתב כ-\ufffd, כדי שאפשר יהיה לפרסם את הקובץ כדף ב-claude.ai
+const safe = (s) => s.replace(/<\/(script)/gi, '<\\/$1').replace(/\uFFFD/g, '\\ufffd');
 const script = (code) => `<script>${safe(code)}</script>`;
 
 function dataFile(name) {
